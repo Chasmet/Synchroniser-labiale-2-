@@ -5,10 +5,14 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Surface
 
-internal class OutputSurface : SurfaceTexture.OnFrameAvailableListener {
+internal class OutputSurface(
+    outputWidth: Int,
+    outputHeight: Int,
+    rotationDegrees: Int
+) : SurfaceTexture.OnFrameAvailableListener {
     private val frameSyncObject = Object()
     private var frameAvailable = false
-    private val textureRender = TextureRender()
+    private val textureRender = TextureRender(outputWidth, outputHeight, rotationDegrees)
     private val surfaceTexture: SurfaceTexture
     val surface: Surface
 
