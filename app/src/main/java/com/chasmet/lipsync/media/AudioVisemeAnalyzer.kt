@@ -1,5 +1,6 @@
 package com.chasmet.lipsync.media
 
+import android.content.Context
 import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -12,20 +13,14 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * Analyse locale du MP3. Aucun serveur n'est utilisé.
- *
- * Le moteur transforme l'énergie, les changements de signe et les transitoires
- * du signal en trois paramètres de visème : ouverture, largeur et rondeur.
- * Cette V1 est volontairement légère pour rester compatible avec un téléphone.
+ * Analyse locale du MP3 et combine le signal audio avec le réseau neuronal
+ * personnalisé entraîné sur les mouvements de bouche de l'utilisateur.
  */
-class AudioVisemeAnalyzer {
+class AudioVisemeAnalyzer(context: Context) {
 
-    private data class RawFrame(
-        val timeUs: Long,
-        val rms: Float,
-        val zeroCrossingRate: Float,
-        val transientRate: Float
-    )
+    private val personalModel = runCatching {
+        PersonalLipModel.load(context.applicationContext)
+    }.getOrNull()
 
     fun analyze(audioFile: File, startUs: Long = 0L): VisemeTimeline {
         val extractor = MediaExtractor()
@@ -81,7 +76,11 @@ class AudioVisemeAnalyzer {
                                 0,
                                 sampleSize,
                                 extractor.sampleTime,
-                                if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+                                if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+                                    MediaCodec.BUFFER_FLAG_KEY_FRAME
+                                } else {
+                                    0
+                                }
                             )
                             extractor.advance()
                         }
@@ -127,40 +126,59 @@ class AudioVisemeAnalyzer {
         }
     }
 
-    private fun buildTimeline(rawFrames: List<RawFrame>): VisemeTimeline {
+    private fun buildTimeline(rawFrames: List<AudioFeatureFrame>): VisemeTimeline {
         if (rawFrames.isEmpty()) {
             throw IllegalStateException("Le fichier audio ne contient aucun son exploitable")
         }
 
         val sortedEnergy = rawFrames.map { it.rms }.sorted()
-        val peakIndex = (sortedEnergy.lastIndex * 0.95f).toInt().coerceIn(0, sortedEnergy.lastIndex)
+        val peakIndex = (sortedEnergy.lastIndex * 0.95f)
+            .toInt()
+            .coerceIn(0, sortedEnergy.lastIndex)
         val peak = max(sortedEnergy[peakIndex], 0.0001f)
 
-        val frames = rawFrames.map { raw ->
+        val frames = rawFrames.mapIndexed { index, raw ->
             val energy = sqrt((raw.rms / peak).coerceIn(0f, 1.4f)).coerceIn(0f, 1f)
             val silenceGate = ((energy - 0.035f) / 0.965f).coerceIn(0f, 1f)
-
             val fricative = ((raw.zeroCrossingRate - 0.08f) / 0.24f).coerceIn(0f, 1f)
             val transient = (raw.transientRate * 7f).coerceIn(0f, 1f)
             val voiced = (1f - fricative).coerceIn(0f, 1f)
 
-            val openness = (
+            val signalOpen = (
                 silenceGate * (0.20f + energy * 0.78f) * (0.78f + transient * 0.22f)
             ).coerceIn(0f, 1f)
-
-            val width = (
+            val signalWidth = (
                 silenceGate * (fricative * 0.70f + transient * 0.30f)
             ).coerceIn(0f, 1f)
-
-            val roundness = (
+            val signalRound = (
                 silenceGate * voiced * (1f - transient * 0.45f) * 0.85f
             ).coerceIn(0f, 1f)
 
+            val trained = personalModel?.predict(rawFrames, index)
+            val signalBlend = personalModel?.signalBlend ?: 1f
+            val trainedBlend = 1f - signalBlend
+
+            val openness = if (trained != null) {
+                signalOpen * signalBlend + trained[0] * silenceGate * trainedBlend
+            } else {
+                signalOpen
+            }
+            val width = if (trained != null) {
+                signalWidth * signalBlend + trained[1] * silenceGate * trainedBlend
+            } else {
+                signalWidth
+            }
+            val roundness = if (trained != null) {
+                signalRound * signalBlend + trained[2] * silenceGate * trainedBlend
+            } else {
+                signalRound
+            }
+
             VisemeFrame(
                 timeUs = raw.timeUs,
-                openness = smoothStep(openness),
-                width = smoothStep(width),
-                roundness = smoothStep(roundness)
+                openness = smoothStep((openness * 1.12f).coerceIn(0f, 1f)),
+                width = smoothStep(width.coerceIn(0f, 1f)),
+                roundness = smoothStep(roundness.coerceIn(0f, 1f))
             )
         }
 
@@ -191,7 +209,7 @@ class AudioVisemeAnalyzer {
         private val channels: Int
     ) {
         private val windowSize = max(1, (sampleRate * 0.040f).toInt())
-        private val frames = mutableListOf<RawFrame>()
+        private val frames = mutableListOf<AudioFeatureFrame>()
         private var sampleInWindow = 0
         private var totalMonoSamples = 0L
         private var sumSquares = 0.0
@@ -218,7 +236,7 @@ class AudioVisemeAnalyzer {
             }
         }
 
-        fun finish(): List<RawFrame> {
+        fun finish(): List<AudioFeatureFrame> {
             if (sampleInWindow > 0) flushWindow()
             return frames
         }
@@ -256,7 +274,7 @@ class AudioVisemeAnalyzer {
             val startSample = totalMonoSamples - sampleInWindow
             val timeUs = startSample * 1_000_000L / sampleRate.coerceAtLeast(1)
 
-            frames += RawFrame(timeUs, rms, zcr, transient)
+            frames += AudioFeatureFrame(timeUs, rms, zcr, transient)
             sampleInWindow = 0
             sumSquares = 0.0
             zeroCrossings = 0
