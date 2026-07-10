@@ -9,7 +9,11 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import kotlin.math.sqrt
 
-internal class TextureRender {
+internal class TextureRender(
+    private val outputWidth: Int,
+    private val outputHeight: Int,
+    rotationDegrees: Int
+) {
     private val triangleVertices: FloatBuffer = ByteBuffer
         .allocateDirect(TRIANGLE_VERTICES_DATA.size * FLOAT_SIZE_BYTES)
         .order(ByteOrder.nativeOrder())
@@ -37,7 +41,14 @@ internal class TextureRender {
 
     init {
         Matrix.setIdentityM(stMatrix, 0)
-        Matrix.setIdentityM(mvpMatrix, 0)
+        Matrix.setRotateM(
+            mvpMatrix,
+            0,
+            -rotationDegrees.toFloat(),
+            0f,
+            0f,
+            1f
+        )
     }
 
     fun surfaceCreated() {
@@ -87,6 +98,7 @@ internal class TextureRender {
         surfaceTexture.getTransformMatrix(stMatrix)
         val transformedMouth = transformMouthRegion(mouth)
 
+        GLES20.glViewport(0, 0, outputWidth, outputHeight)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
@@ -138,10 +150,7 @@ internal class TextureRender {
         GLES20.glFinish()
     }
 
-    /**
-     * SurfaceTexture peut retourner l'image avec un retournement vertical, un recadrage
-     * ou une mise à l'échelle. La bouche doit subir exactement la même matrice que l'image.
-     */
+    /** Applique à la bouche la même matrice de texture que celle de l'image. */
     private fun transformMouthRegion(mouth: MouthRegion): MouthRegion {
         val center = transformPoint(mouth.centerX, mouth.centerY)
         val horizontal = transformPoint(mouth.centerX + mouth.width, mouth.centerY)

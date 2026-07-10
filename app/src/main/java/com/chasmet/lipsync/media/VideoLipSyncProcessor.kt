@@ -38,8 +38,13 @@ class VideoLipSyncProcessor {
             val inputFormat = extractor.getTrackFormat(videoTrack)
             val inputMime = inputFormat.getString(MediaFormat.KEY_MIME)
                 ?: error("Format vidéo inconnu")
-            val width = inputFormat.getInteger(MediaFormat.KEY_WIDTH)
-            val height = inputFormat.getInteger(MediaFormat.KEY_HEIGHT)
+            val encodedWidth = inputFormat.getInteger(MediaFormat.KEY_WIDTH)
+            val encodedHeight = inputFormat.getInteger(MediaFormat.KEY_HEIGHT)
+            val geometry = renderGeometry(
+                encodedWidth = encodedWidth,
+                encodedHeight = encodedHeight,
+                rotationDegrees = readRotation(inputVideo) ?: 0
+            )
             val frameRate = inputFormat.getIntegerOrDefault(MediaFormat.KEY_FRAME_RATE, 30)
             val sourceDurationUs = inputFormat.getLongOrDefault(
                 MediaFormat.KEY_DURATION,
@@ -51,12 +56,24 @@ class VideoLipSyncProcessor {
                 .toInt()
                 .coerceAtLeast(1)
 
-            val outputFormat = MediaFormat.createVideoFormat(VIDEO_MIME, width, height).apply {
+            /*
+             * Les pixels sont réellement réencodés dans les dimensions affichées.
+             * La sortie ne dépend donc plus d'un simple drapeau de rotation que certaines
+             * applications Android ignorent.
+             */
+            val outputFormat = MediaFormat.createVideoFormat(
+                VIDEO_MIME,
+                geometry.outputWidth,
+                geometry.outputHeight
+            ).apply {
                 setInteger(
                     MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
                 )
-                setInteger(MediaFormat.KEY_BIT_RATE, chooseBitrate(width, height, frameRate))
+                setInteger(
+                    MediaFormat.KEY_BIT_RATE,
+                    chooseBitrate(geometry.outputWidth, geometry.outputHeight, frameRate)
+                )
                 setInteger(MediaFormat.KEY_FRAME_RATE, frameRate.coerceIn(15, 60))
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
@@ -70,7 +87,11 @@ class VideoLipSyncProcessor {
             inputSurface = encoderSurface
             encoderCodec.start()
 
-            val decoderSurface = OutputSurface()
+            val decoderSurface = OutputSurface(
+                outputWidth = geometry.outputWidth,
+                outputHeight = geometry.outputHeight,
+                rotationDegrees = geometry.rotationDegrees
+            )
             outputSurface = decoderSurface
             val decoderCodec = MediaCodec.createDecoderByType(inputMime).also { codec ->
                 codec.configure(inputFormat, decoderSurface.surface, null, 0)
@@ -82,9 +103,6 @@ class VideoLipSyncProcessor {
                 outputVideoOnly.absolutePath,
                 MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
             )
-            readRotation(inputVideo)?.let { rotation ->
-                if (rotation in setOf(90, 180, 270)) muxer.setOrientationHint(rotation)
-            }
 
             val decoderInfo = MediaCodec.BufferInfo()
             val encoderInfo = MediaCodec.BufferInfo()
@@ -119,7 +137,11 @@ class VideoLipSyncProcessor {
                                 0,
                                 sampleSize,
                                 sampleTime,
-                                if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+                                if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+                                    MediaCodec.BUFFER_FLAG_KEY_FRAME
+                                } else {
+                                    0
+                                }
                             )
                             extractor.advance()
                         }
