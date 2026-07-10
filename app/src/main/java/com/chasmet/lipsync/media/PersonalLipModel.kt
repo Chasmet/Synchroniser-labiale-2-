@@ -49,7 +49,7 @@ internal class PersonalLipModel private constructor(
         input[cursor++] = (next.rms - previous.rms) / 2f
         input[cursor++] = (next.zeroCrossingRate - previous.zeroCrossingRate) / 2f
         input[cursor++] = (next.transientRate - previous.transientRate) / 2f
-        input[cursor++] = ln(1f + current.rms * 100f)
+        input[cursor++] = ln((1f + current.rms * 100f).toDouble()).toFloat()
         input[cursor] = current.transientRate / (current.rms + 0.0001f)
 
         var activations = FloatArray(input.size) { i ->
@@ -64,7 +64,7 @@ internal class PersonalLipModel private constructor(
                     value += activations[row] * layer.weights[row][column]
                 }
                 output[column] = when (layer.activation) {
-                    "tanh" -> tanh(value)
+                    "tanh" -> tanh(value.toDouble()).toFloat()
                     else -> value
                 }
             }
