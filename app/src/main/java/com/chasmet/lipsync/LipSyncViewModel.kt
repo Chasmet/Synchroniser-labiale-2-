@@ -109,11 +109,11 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_ANALYSIS,
                                 0.16f,
-                                "Création des mouvements de lèvres"
+                                "Analyse par le modèle personnel"
                             )
                         )
                     }
-                    val timeline = AudioVisemeAnalyzer().analyze(audioFile, startUs)
+                    val timeline = AudioVisemeAnalyzer(context).analyze(audioFile, startUs)
                     val videoDurationUs = video.durationMs * 1_000L
                     val usableDurationUs = min(videoDurationUs, timeline.durationUs)
                         .coerceAtLeast(100_000L)
