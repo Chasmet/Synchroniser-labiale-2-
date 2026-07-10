@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build:
@@ -40,11 +41,29 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Vérifier le projet
-        run: gradle --no-daemon :app:lintDebug
+      - name: Compiler et vérifier le projet
+        id: gradle
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon :app:assembleDebug :app:lintDebug 2>&1 | tee gradle-output.log
+          status=${PIPESTATUS[0]}
+          tail -n 250 gradle-output.log > gradle-tail.log
+          exit $status
 
-      - name: Construire l'APK
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Publier le diagnostic dans la pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Diagnostic automatique de la compilation"
+            echo
+            echo '```text'
+            cat gradle-tail.log
+            echo '```'
+          } > diagnostic.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
         run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.1.0.apk
