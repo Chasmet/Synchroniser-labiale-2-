@@ -20,11 +20,12 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      - name: Extraire le code source temporaire
+      - name: Extraire et préparer le code source
         if: hashFiles('kotlin-src.b64.part-*') != ''
         run: |
           cat kotlin-src.b64.part-* | base64 -d | tar -xz
           sed -i 's/^private fun MediaFormat.getIntegerOrDefault/internal fun MediaFormat.getIntegerOrDefault/' app/src/main/java/com/chasmet/lipsync/media/AudioVisemeAnalyzer.kt
+          find app/src/main/java -name '*.kt' -print0 | xargs -0 sed -i 's/extractor.sampleFlags/if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0/g'
 
       - name: Installer Java 17
         uses: actions/setup-java@v4
