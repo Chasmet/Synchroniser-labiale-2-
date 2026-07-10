@@ -4,6 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val encodedTestKeystore = rootProject.file("keystore/lipsync-test.jks.b64")
+val decodedTestKeystore = layout.buildDirectory.file("generated/lipsync-test.jks").get().asFile
+if (!decodedTestKeystore.exists()) {
+    decodedTestKeystore.parentFile.mkdirs()
+    decodedTestKeystore.writeBytes(
+        java.util.Base64.getDecoder().decode(encodedTestKeystore.readText().trim())
+    )
+}
+
 android {
     namespace = "com.chasmet.lipsync"
     compileSdk = 35
@@ -19,7 +28,19 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = decodedTestKeystore
+            storePassword = "lipsync-test-2026"
+            keyAlias = "lipsync-test"
+            keyPassword = "lipsync-test-2026"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
