@@ -1,0 +1,81 @@
+name: Construire l'APK Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Extraire le code source temporaire
+        if: hashFiles('kotlin-src.tar.gz') != ''
+        run: tar -xzf kotlin-src.tar.gz
+
+      - name: Installer Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Installer Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Installer les composants Android
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Installer Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Vérifier le projet
+        run: gradle --no-daemon :app:lintDebug
+
+      - name: Construire l'APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Préparer l'APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.1.0.apk
+
+      - name: Publier l'artefact de compilation
+        uses: actions/upload-artifact@v4
+        with:
+          name: LipSync-AI-Studio-v0.1.0
+          path: LipSync-AI-Studio-v0.1.0.apk
+          if-no-files-found: error
+
+      - name: Publier la version téléchargeable
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            gh release upload v0.1.0 LipSync-AI-Studio-v0.1.0.apk --clobber
+          else
+            gh release create v0.1.0 LipSync-AI-Studio-v0.1.0.apk \
+              --target "$GITHUB_SHA" \
+              --title "LipSync AI Studio v0.1.0" \
+              --notes "Première version Android hors ligne : import vidéo et MP3, détection locale du visage, synchronisation labiale légère par visèmes, traitement par blocs de 30 secondes et export MP4."
+          fi
+
+      - name: Rendre le code Kotlin visible dans le dépôt
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && hashFiles('kotlin-src.tar.gz') != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm kotlin-src.tar.gz
+          git add app/src/main/java
+          git commit -m "Ajouter le code source Android"
+          git push
