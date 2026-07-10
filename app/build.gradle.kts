@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -9,7 +11,7 @@ val decodedTestKeystore = layout.buildDirectory.file("generated/lipsync-test.jks
 if (!decodedTestKeystore.exists()) {
     decodedTestKeystore.parentFile.mkdirs()
     decodedTestKeystore.writeBytes(
-        java.util.Base64.getDecoder().decode(encodedTestKeystore.readText().trim())
+        Base64.getDecoder().decode(encodedTestKeystore.readText().trim())
     )
 }
 
