@@ -2,6 +2,8 @@ package com.chasmet.lipsync.media
 
 import android.graphics.Bitmap
 import android.graphics.PointF
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -12,10 +14,17 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
 class FaceTrackAnalyzer {
+
+    private data class VideoGeometry(
+        val encodedWidth: Int,
+        val encodedHeight: Int,
+        val rotationDegrees: Int
+    )
 
     private val detector = FaceDetection.getClient(
         FaceDetectorOptions.Builder()
@@ -34,10 +43,12 @@ class FaceTrackAnalyzer {
                 .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull()
                 ?: 0L
+            val geometry = readGeometry(videoFile, retriever)
 
             val sampleTimesUs = buildList {
                 add(0L)
-                add(500_000L)
+                add(350_000L)
+                add(700_000L)
                 add(1_000_000L)
                 if (durationMs > 2_000L) add(2_000_000L)
                 if (durationMs > 5_000L) add(5_000_000L)
@@ -47,12 +58,18 @@ class FaceTrackAnalyzer {
             for (timeUs in sampleTimesUs) {
                 val bitmap = retriever.getFrameAtTime(
                     timeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    MediaMetadataRetriever.OPTION_CLOSEST
                 ) ?: continue
                 val scaled = scaleForDetection(bitmap)
                 val face = detectLargestFace(scaled)
                 if (face != null) {
-                    regions += mouthRegion(face, scaled.width, scaled.height)
+                    val detected = mouthRegion(face, scaled.width, scaled.height)
+                    val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
+                        geometry.rotationDegrees
+                    } else {
+                        0
+                    }
+                    regions += detected.displayToEncoded(rotationToEncoded)
                 }
                 if (scaled !== bitmap) scaled.recycle()
                 bitmap.recycle()
@@ -69,6 +86,44 @@ class FaceTrackAnalyzer {
             runCatching { retriever.release() }
             detector.close()
         }
+    }
+
+    private fun readGeometry(
+        videoFile: File,
+        retriever: MediaMetadataRetriever
+    ): VideoGeometry {
+        val rotation = retriever
+            .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            ?.toIntOrNull()
+            ?: 0
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(videoFile.absolutePath)
+            val videoTrack = (0 until extractor.trackCount).firstOrNull { index ->
+                extractor.getTrackFormat(index)
+                    .getString(MediaFormat.KEY_MIME)
+                    ?.startsWith("video/") == true
+            }
+            val format = videoTrack?.let(extractor::getTrackFormat)
+            VideoGeometry(
+                encodedWidth = format?.getIntegerOrDefault(MediaFormat.KEY_WIDTH, 0) ?: 0,
+                encodedHeight = format?.getIntegerOrDefault(MediaFormat.KEY_HEIGHT, 0) ?: 0,
+                rotationDegrees = rotation
+            )
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }
+
+    private fun isDisplayOriented(bitmap: Bitmap, geometry: VideoGeometry): Boolean {
+        val rotation = ((geometry.rotationDegrees % 360) + 360) % 360
+        if (rotation !in setOf(90, 270)) return false
+        if (geometry.encodedWidth <= 0 || geometry.encodedHeight <= 0) return true
+
+        val bitmapRatio = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+        val encodedRatio = geometry.encodedWidth.toFloat() / geometry.encodedHeight.coerceAtLeast(1)
+        val displayedRatio = geometry.encodedHeight.toFloat() / geometry.encodedWidth.coerceAtLeast(1)
+        return abs(bitmapRatio - displayedRatio) <= abs(bitmapRatio - encodedRatio)
     }
 
     private suspend fun detectLargestFace(bitmap: Bitmap): Face? {
@@ -130,8 +185,8 @@ class FaceTrackAnalyzer {
         return MouthRegion(
             centerX = (centerX / width).coerceIn(0.05f, 0.95f),
             centerY = (1f - centerY / height).coerceIn(0.05f, 0.95f),
-            width = (mouthWidthPx / width * 1.65f).coerceIn(0.08f, 0.45f),
-            height = (mouthHeightPx / height * 1.75f).coerceIn(0.04f, 0.26f)
+            width = (mouthWidthPx / width * 1.80f).coerceIn(0.08f, 0.45f),
+            height = (mouthHeightPx / height * 1.95f).coerceIn(0.04f, 0.28f)
         )
     }
 
