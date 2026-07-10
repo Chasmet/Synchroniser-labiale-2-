@@ -22,7 +22,9 @@ jobs:
 
       - name: Extraire le code source temporaire
         if: hashFiles('kotlin-src.b64.part-*') != ''
-        run: cat kotlin-src.b64.part-* | base64 -d | tar -xz
+        run: |
+          cat kotlin-src.b64.part-* | base64 -d | tar -xz
+          sed -i 's/^private fun MediaFormat.getIntegerOrDefault/internal fun MediaFormat.getIntegerOrDefault/' app/src/main/java/com/chasmet/lipsync/media/AudioVisemeAnalyzer.kt
 
       - name: Installer Java 17
         uses: actions/setup-java@v4
