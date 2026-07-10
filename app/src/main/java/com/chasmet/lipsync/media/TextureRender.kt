@@ -7,6 +7,7 @@ import android.opengl.Matrix
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import kotlin.math.sqrt
 
 internal class TextureRender {
     private val triangleVertices: FloatBuffer = ByteBuffer
@@ -61,7 +62,7 @@ internal class TextureRender {
         GLES20.glTexParameterf(
             GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
             GLES20.GL_TEXTURE_MIN_FILTER,
-            GLES20.GL_NEAREST.toFloat()
+            GLES20.GL_LINEAR.toFloat()
         )
         GLES20.glTexParameterf(
             GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
@@ -84,6 +85,7 @@ internal class TextureRender {
     fun drawFrame(surfaceTexture: SurfaceTexture, mouth: MouthRegion, viseme: VisemeFrame) {
         checkGlError("début drawFrame")
         surfaceTexture.getTransformMatrix(stMatrix)
+        val transformedMouth = transformMouthRegion(mouth)
 
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -117,15 +119,56 @@ internal class TextureRender {
 
         GLES20.glUniformMatrix4fv(uMvpMatrixHandle, 1, false, mvpMatrix, 0)
         GLES20.glUniformMatrix4fv(uStMatrixHandle, 1, false, stMatrix, 0)
-        GLES20.glUniform2f(uMouthCenterHandle, mouth.centerX, mouth.centerY)
-        GLES20.glUniform2f(uMouthSizeHandle, mouth.width, mouth.height)
-        GLES20.glUniform1f(uOpenHandle, viseme.openness)
-        GLES20.glUniform1f(uWidthHandle, viseme.width)
-        GLES20.glUniform1f(uRoundHandle, viseme.roundness)
+        GLES20.glUniform2f(
+            uMouthCenterHandle,
+            transformedMouth.centerX,
+            transformedMouth.centerY
+        )
+        GLES20.glUniform2f(
+            uMouthSizeHandle,
+            transformedMouth.width,
+            transformedMouth.height
+        )
+        GLES20.glUniform1f(uOpenHandle, viseme.openness.coerceIn(0f, 1f))
+        GLES20.glUniform1f(uWidthHandle, viseme.width.coerceIn(0f, 1f))
+        GLES20.glUniform1f(uRoundHandle, viseme.roundness.coerceIn(0f, 1f))
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         checkGlError("glDrawArrays")
         GLES20.glFinish()
+    }
+
+    /**
+     * SurfaceTexture peut retourner l'image avec un retournement vertical, un recadrage
+     * ou une mise à l'échelle. La bouche doit subir exactement la même matrice que l'image.
+     */
+    private fun transformMouthRegion(mouth: MouthRegion): MouthRegion {
+        val center = transformPoint(mouth.centerX, mouth.centerY)
+        val horizontal = transformPoint(mouth.centerX + mouth.width, mouth.centerY)
+        val vertical = transformPoint(mouth.centerX, mouth.centerY + mouth.height)
+
+        val widthDx = horizontal[0] - center[0]
+        val widthDy = horizontal[1] - center[1]
+        val heightDx = vertical[0] - center[0]
+        val heightDy = vertical[1] - center[1]
+
+        val mappedWidth = sqrt(widthDx * widthDx + widthDy * widthDy)
+        val mappedHeight = sqrt(heightDx * heightDx + heightDy * heightDy)
+
+        return MouthRegion(
+            centerX = center[0].coerceIn(0.01f, 0.99f),
+            centerY = center[1].coerceIn(0.01f, 0.99f),
+            width = mappedWidth.coerceIn(0.02f, 0.50f),
+            height = mappedHeight.coerceIn(0.02f, 0.36f)
+        )
+    }
+
+    private fun transformPoint(x: Float, y: Float): FloatArray {
+        val input = floatArrayOf(x, y, 0f, 1f)
+        val output = FloatArray(4)
+        Matrix.multiplyMV(output, 0, stMatrix, 0, input, 0)
+        val w = if (output[3] == 0f) 1f else output[3]
+        return floatArrayOf(output[0] / w, output[1] / w)
     }
 
     fun checkGlError(operation: String) {
@@ -217,10 +260,15 @@ internal class TextureRender {
                 vec2 safeSize = max(uMouthSize, vec2(0.001));
                 vec2 ellipse = delta / safeSize;
                 float distanceFromMouth = dot(ellipse, ellipse);
-                float influence = 1.0 - smoothstep(0.50, 1.12, distanceFromMouth);
+                float influence = 1.0 - smoothstep(0.42, 1.10, distanceFromMouth);
 
-                float horizontalScale = 1.0 + influence * (uWidth * 0.18 - uRound * 0.12);
-                float verticalScale = 1.0 + influence * uOpen * 0.62;
+                float speechOpen = smoothstep(0.02, 0.18, uOpen);
+                float horizontalScale = 1.0 + influence * (
+                    uWidth * 0.34 - uRound * 0.18
+                );
+                float verticalScale = 1.0 + influence * (
+                    uOpen * 1.28 + speechOpen * 0.10
+                );
                 vec2 warped = uMouthCenter + vec2(
                     delta.x / horizontalScale,
                     delta.y / verticalScale
@@ -229,28 +277,29 @@ internal class TextureRender {
                 vec4 color = texture2D(sTexture, warped);
 
                 vec2 innerScale = vec2(
-                    safeSize.x * (0.43 - uRound * 0.08),
-                    safeSize.y * (0.18 + uOpen * 0.46)
+                    safeSize.x * (0.45 - uRound * 0.08),
+                    safeSize.y * (0.16 + uOpen * 0.58)
                 );
                 vec2 innerEllipse = delta / max(innerScale, vec2(0.001));
-                float innerMask = (1.0 - smoothstep(0.72, 1.0, dot(innerEllipse, innerEllipse)))
-                    * influence * uOpen;
-                vec3 mouthShadow = vec3(0.10, 0.015, 0.025);
-                color.rgb = mix(color.rgb, mouthShadow, innerMask * 0.46);
+                float innerMask = (
+                    1.0 - smoothstep(0.68, 1.0, dot(innerEllipse, innerEllipse))
+                ) * influence * speechOpen;
+                vec3 mouthShadow = vec3(0.075, 0.008, 0.018);
+                color.rgb = mix(color.rgb, mouthShadow, innerMask * 0.70);
 
                 float teethBand = 1.0 - smoothstep(
-                    0.06,
-                    0.18,
+                    0.045,
+                    0.16,
                     abs(delta.y + safeSize.y * 0.08)
                 );
                 float teethWidth = 1.0 - smoothstep(
-                    safeSize.x * 0.25,
-                    safeSize.x * 0.47,
+                    safeSize.x * 0.24,
+                    safeSize.x * 0.48,
                     abs(delta.x)
                 );
                 float teethMask = teethBand * teethWidth * influence
-                    * uWidth * (1.0 - uRound) * uOpen * 0.38;
-                color.rgb = mix(color.rgb, vec3(0.93, 0.90, 0.84), teethMask);
+                    * uWidth * (1.0 - uRound) * speechOpen * 0.50;
+                color.rgb = mix(color.rgb, vec3(0.94, 0.91, 0.86), teethMask);
 
                 gl_FragColor = color;
             }

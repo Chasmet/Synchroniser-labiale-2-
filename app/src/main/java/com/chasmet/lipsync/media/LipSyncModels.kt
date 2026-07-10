@@ -25,6 +25,42 @@ data class MouthRegion(
     }
 }
 
+/**
+ * Convertit une zone repérée sur l'image affichée vers les coordonnées de la
+ * trame réellement décodée. Les coordonnées utilisent une origine en bas à gauche.
+ */
+internal fun MouthRegion.displayToEncoded(rotationDegrees: Int): MouthRegion {
+    val normalizedRotation = ((rotationDegrees % 360) + 360) % 360
+    val converted = when (normalizedRotation) {
+        90 -> MouthRegion(
+            centerX = 1f - centerY,
+            centerY = centerX,
+            width = height,
+            height = width
+        )
+        180 -> MouthRegion(
+            centerX = 1f - centerX,
+            centerY = 1f - centerY,
+            width = width,
+            height = height
+        )
+        270 -> MouthRegion(
+            centerX = centerY,
+            centerY = 1f - centerX,
+            width = height,
+            height = width
+        )
+        else -> this
+    }
+
+    return converted.copy(
+        centerX = converted.centerX.coerceIn(0.02f, 0.98f),
+        centerY = converted.centerY.coerceIn(0.02f, 0.98f),
+        width = converted.width.coerceIn(0.035f, 0.48f),
+        height = converted.height.coerceIn(0.025f, 0.32f)
+    )
+}
+
 data class VisemeFrame(
     val timeUs: Long,
     val openness: Float,
