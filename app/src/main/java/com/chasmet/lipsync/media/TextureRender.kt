@@ -12,7 +12,11 @@ import kotlin.math.sqrt
 internal class TextureRender(
     private val outputWidth: Int,
     private val outputHeight: Int,
-    rotationDegrees: Int
+    rotationDegrees: Int,
+    private val viewportX: Int,
+    private val viewportY: Int,
+    private val viewportWidth: Int,
+    private val viewportHeight: Int
 ) {
     private val triangleVertices: FloatBuffer = ByteBuffer
         .allocateDirect(TRIANGLE_VERTICES_DATA.size * FLOAT_SIZE_BYTES)
@@ -98,12 +102,14 @@ internal class TextureRender(
         surfaceTexture.getTransformMatrix(stMatrix)
         val transformedMouth = transformMouthRegion(mouth)
 
+        // Nettoie tout le format choisi, puis dessine la vidéo sans l'étirer.
         GLES20.glViewport(0, 0, outputWidth, outputHeight)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        GLES20.glViewport(viewportX, viewportY, viewportWidth, viewportHeight)
+
         GLES20.glUseProgram(program)
         checkGlError("glUseProgram")
-
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
 
