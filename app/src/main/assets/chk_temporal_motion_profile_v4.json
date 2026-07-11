@@ -1,5 +1,5 @@
 {
-  "name": "CHK-Temporal-Motion-v4-Pro",
+  "name": "CHK-Temporal-Motion-v4-AudioCalibrated",
   "version": 4,
   "training": {
     "videos_examined": 28,
@@ -7,17 +7,25 @@
     "source_duration_seconds": 590.171,
     "labeled_duration_seconds": 278.0,
     "samples_total": 6950,
-    "diagnostic_outputs_analyzed": 1,
+    "diagnostic_outputs_analyzed": 2,
     "source_files_embedded": false
   },
+  "calibration": {
+    "diagnostic_duration_seconds": 8.033,
+    "diagnostic_fps": 30,
+    "estimated_visual_lag_ms": 567,
+    "applied_fallback_look_ahead_ms": 560,
+    "method": "correlation entre energie audio et mouvement optique de la zone labiale",
+    "confidence_correlation": 0.392
+  },
   "inference": {
-    "look_ahead_frames": 1,
-    "attack_factor": 0.74,
-    "release_factor": 0.54,
-    "closure_strength": 0.84,
-    "openness_gain": 0.92,
-    "width_gain": 0.96,
-    "roundness_gain": 0.94,
+    "look_ahead_frames": 14,
+    "attack_factor": 0.88,
+    "release_factor": 0.72,
+    "closure_strength": 0.90,
+    "openness_gain": 1.08,
+    "width_gain": 1.02,
+    "roundness_gain": 0.72,
     "minimum_speech_gate": 0.035
   }
 }

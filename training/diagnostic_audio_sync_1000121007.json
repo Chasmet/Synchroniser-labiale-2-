@@ -1,0 +1,30 @@
+{
+  "source_embedded": false,
+  "diagnostic_type": "video_resultat_utilisateur",
+  "duration_seconds": 8.033,
+  "video": {
+    "width": 720,
+    "height": 1280,
+    "fps": 30
+  },
+  "audio": {
+    "codec": "aac",
+    "sample_rate_hz": 48000,
+    "channels": 2
+  },
+  "measurement": {
+    "audio_feature": "energie RMS lissee",
+    "visual_feature": "flux optique de la zone labiale suivi par visage",
+    "search_range_ms": 1000,
+    "best_lag_frames": 17,
+    "estimated_visual_lag_ms": 567,
+    "correlation": 0.392,
+    "interpretation": "le mouvement labial arrive apres la voix"
+  },
+  "applied_fix": {
+    "fallback_look_ahead_frames": 14,
+    "fallback_look_ahead_ms": 560,
+    "wav2lip_alignment_changed": false,
+    "reason": "Wav2Lip utilise son propre alignement Mel ; seule la voie de secours heuristique est decalee"
+  }
+}

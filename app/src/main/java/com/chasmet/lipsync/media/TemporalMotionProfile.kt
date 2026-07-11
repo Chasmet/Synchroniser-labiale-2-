@@ -18,15 +18,21 @@ internal data class TemporalMotionProfile(
     companion object {
         private const val ASSET_NAME = "chk_temporal_motion_profile_v4.json"
 
+        /**
+         * Le résultat de diagnostic fourni présente un retard visuel moyen d'environ
+         * 567 ms. Le moteur de secours analyse des fenêtres de 40 ms : 14 fenêtres
+         * correspondent à 560 ms et compensent ce retard sans toucher au moteur
+         * génératif Wav2Lip, qui utilise son propre alignement Mel.
+         */
         val DEFAULT = TemporalMotionProfile(
-            name = "Profil Pro v4",
-            lookAheadFrames = 1,
-            attackFactor = 0.74f,
-            releaseFactor = 0.54f,
-            closureStrength = 0.84f,
-            opennessGain = 0.92f,
-            widthGain = 0.96f,
-            roundnessGain = 0.94f,
+            name = "Profil Pro v4 calibré audio",
+            lookAheadFrames = 14,
+            attackFactor = 0.88f,
+            releaseFactor = 0.72f,
+            closureStrength = 0.90f,
+            opennessGain = 1.08f,
+            widthGain = 1.02f,
+            roundnessGain = 0.72f,
             minimumSpeechGate = 0.035f
         )
 
@@ -39,7 +45,7 @@ internal data class TemporalMotionProfile(
                 lookAheadFrames = inference.optInt(
                     "look_ahead_frames",
                     DEFAULT.lookAheadFrames
-                ).coerceIn(0, 5),
+                ).coerceIn(0, 20),
                 attackFactor = inference.optDouble(
                     "attack_factor",
                     DEFAULT.attackFactor.toDouble()
@@ -63,7 +69,7 @@ internal data class TemporalMotionProfile(
                 roundnessGain = inference.optDouble(
                     "roundness_gain",
                     DEFAULT.roundnessGain.toDouble()
-                ).toFloat().coerceIn(0.7f, 1.6f),
+                ).toFloat().coerceIn(0.5f, 1.6f),
                 minimumSpeechGate = inference.optDouble(
                     "minimum_speech_gate",
                     DEFAULT.minimumSpeechGate.toDouble()
