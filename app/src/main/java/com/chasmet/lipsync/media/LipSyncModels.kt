@@ -24,6 +24,17 @@ data class MouthRegion(
     val width: Float,
     val height: Float
 ) {
+    fun interpolate(other: MouthRegion, amount: Float): MouthRegion {
+        val t = amount.coerceIn(0f, 1f)
+        fun mix(start: Float, end: Float): Float = start + (end - start) * t
+        return MouthRegion(
+            centerX = mix(centerX, other.centerX),
+            centerY = mix(centerY, other.centerY),
+            width = mix(width, other.width),
+            height = mix(height, other.height)
+        )
+    }
+
     companion object {
         val DEFAULT = MouthRegion(
             centerX = 0.5f,
@@ -31,6 +42,53 @@ data class MouthRegion(
             width = 0.24f,
             height = 0.10f
         )
+    }
+}
+
+data class MouthKeyframe(
+    val timeUs: Long,
+    val region: MouthRegion,
+    val confidence: Float = 1f
+)
+
+/**
+ * Position de la bouche suivie dans toute la vidéo.
+ * Les images intermédiaires sont interpolées pour éviter les sauts visibles.
+ */
+data class MouthTrack(
+    val keyframes: List<MouthKeyframe>,
+    val fallback: MouthRegion
+) {
+    init {
+        require(keyframes.zipWithNext().all { (first, second) ->
+            first.timeUs <= second.timeUs
+        }) { "Les repères de bouche doivent être triés" }
+    }
+
+    val detectionCount: Int
+        get() = keyframes.size
+
+    fun regionAt(timeUs: Long): MouthRegion {
+        if (keyframes.isEmpty()) return fallback
+        if (timeUs <= keyframes.first().timeUs) return keyframes.first().region
+        if (timeUs >= keyframes.last().timeUs) return keyframes.last().region
+
+        var low = 0
+        var high = keyframes.lastIndex
+        while (low <= high) {
+            val middle = (low + high) ushr 1
+            when {
+                keyframes[middle].timeUs < timeUs -> low = middle + 1
+                keyframes[middle].timeUs > timeUs -> high = middle - 1
+                else -> return keyframes[middle].region
+            }
+        }
+
+        val before = keyframes[high.coerceIn(0, keyframes.lastIndex)]
+        val after = keyframes[low.coerceIn(0, keyframes.lastIndex)]
+        val span = (after.timeUs - before.timeUs).coerceAtLeast(1L)
+        val amount = (timeUs - before.timeUs).toFloat() / span.toFloat()
+        return before.region.interpolate(after.region, amount)
     }
 }
 
@@ -75,7 +133,19 @@ data class VisemeFrame(
     val openness: Float,
     val width: Float,
     val roundness: Float
-)
+) {
+    fun interpolate(other: VisemeFrame, targetTimeUs: Long): VisemeFrame {
+        val span = (other.timeUs - timeUs).coerceAtLeast(1L)
+        val amount = ((targetTimeUs - timeUs).toFloat() / span.toFloat()).coerceIn(0f, 1f)
+        fun mix(start: Float, end: Float): Float = start + (end - start) * amount
+        return VisemeFrame(
+            timeUs = targetTimeUs,
+            openness = mix(openness, other.openness),
+            width = mix(width, other.width),
+            roundness = mix(roundness, other.roundness)
+        )
+    }
+}
 
 data class VisemeTimeline(
     val frames: List<VisemeFrame>,
@@ -83,26 +153,31 @@ data class VisemeTimeline(
 ) {
     fun frameAt(timeUs: Long): VisemeFrame {
         if (frames.isEmpty()) return VisemeFrame(timeUs, 0f, 0f, 0f)
+        if (timeUs <= frames.first().timeUs) return frames.first().copy(timeUs = timeUs)
+        if (timeUs >= frames.last().timeUs) return frames.last().copy(timeUs = timeUs)
+
         var low = 0
         var high = frames.lastIndex
         while (low <= high) {
-            val mid = (low + high) ushr 1
-            val value = frames[mid].timeUs
+            val middle = (low + high) ushr 1
             when {
-                value < timeUs -> low = mid + 1
-                value > timeUs -> high = mid - 1
-                else -> return frames[mid]
+                frames[middle].timeUs < timeUs -> low = middle + 1
+                frames[middle].timeUs > timeUs -> high = middle - 1
+                else -> return frames[middle]
             }
         }
-        return frames[high.coerceIn(0, frames.lastIndex)]
+
+        val before = frames[high.coerceIn(0, frames.lastIndex)]
+        val after = frames[low.coerceIn(0, frames.lastIndex)]
+        return before.interpolate(after, timeUs)
     }
 }
 
 enum class ProcessingStage(val label: String) {
     IDLE("Prêt"),
     PREPARING("Préparation des fichiers"),
-    FACE_ANALYSIS("Détection du visage"),
-    AUDIO_ANALYSIS("Analyse audio"),
+    FACE_ANALYSIS("Suivi intelligent du visage"),
+    AUDIO_ANALYSIS("Analyse audio temporelle"),
     VIDEO_RENDER("Synchronisation des lèvres"),
     AUDIO_TRANSCODE("Préparation du MP3"),
     ASSEMBLY("Assemblage final"),
