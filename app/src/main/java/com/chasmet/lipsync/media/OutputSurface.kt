@@ -70,14 +70,16 @@ internal class OutputSurface(
         generatedFace: GeneratedFace?,
         faceConfidence: Float
     ) {
-        val guidedFace = generatedFace?.let { generatedFaceCorrector.apply(it, viseme) }
+        val safeGeneratedFace = generatedFace
+            ?.takeIf { MouthPlacementGuard.isSafe(mouth, face) }
+            ?.let { generatedFaceCorrector.apply(it, viseme) }
         textureRender.drawFrame(
             surfaceTexture = surfaceTexture,
             mouth = mouth,
             viseme = viseme,
             face = face,
-            generatedFace = guidedFace,
-            faceConfidence = faceConfidence
+            generatedFace = safeGeneratedFace,
+            faceConfidence = faceConfidence * MouthPlacementGuard.confidence(mouth, face)
         )
     }
 

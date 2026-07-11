@@ -66,10 +66,11 @@ jobs:
           echo "$expected  $model" | sha256sum --check --strict
           unzip -t "$model" >/dev/null
 
-      - name: Vérifier tous les modèles et la feuille de route
+      - name: Vérifier les modèles et le placement labial
         run: |
           python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
           python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v4.json >/dev/null
+          python -m json.tool training/diagnostic_mouth_position_1000121033.json >/dev/null
           python - <<'PY'
           import base64
           import hashlib
@@ -128,9 +129,24 @@ jobs:
           assert "Vosk" in roadmap
           assert "Wav2Lip" in roadmap
 
+          diagnostic = json.loads(
+              Path("training/diagnostic_mouth_position_1000121033.json").read_text()
+          )
+          assert diagnostic["width"] == 720
+          assert diagnostic["height"] == 1280
+          assert diagnostic["private_media_embedded"] is False
+
+          renderer = Path(
+              "app/src/main/java/com/chasmet/lipsync/media/TextureRender.kt"
+          ).read_text()
+          assert "vLogicalCoord - uMouthCenter" in renderer
+          assert "uSTMatrix * vec4(logicalCoord" in renderer
+          assert "transformFaceRegion" not in renderer
+          assert "faceLocal - vec2(0.50, 0.31)" not in renderer
+
           print(
               f"Moteurs validés : Wav2Lip 256 + Vosk français + "
-              f"{model['name']} + {profile['name']}"
+              f"{model['name']} + {profile['name']} + masque labial centré"
           )
           PY
 
@@ -176,13 +192,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.8.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.8.1.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.8.0
-          path: LipSync-AI-Studio-v0.8.0.apk
+          name: LipSync-AI-Studio-v0.8.1
+          path: LipSync-AI-Studio-v0.8.1.apk
           if-no-files-found: error
           compression-level: 0
 
@@ -191,11 +207,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.8.0 >/dev/null 2>&1; then
-            gh release upload v0.8.0 LipSync-AI-Studio-v0.8.0.apk --clobber
+          if gh release view v0.8.1 >/dev/null 2>&1; then
+            gh release upload v0.8.1 LipSync-AI-Studio-v0.8.1.apk --clobber
           else
-            gh release create v0.8.0 LipSync-AI-Studio-v0.8.0.apk \
+            gh release create v0.8.1 LipSync-AI-Studio-v0.8.1.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.8.0 Guidage vocal français" \
-              --notes "Wav2Lip 256 reste le moteur principal. Ajout de Vosk français hors ligne avec mots horodatés, détection locale de parole et de silence, conversion des mots en formes de lèvres françaises, corrections M/P/B, F/V, A/E/I et O/U uniquement lorsque la confiance est suffisante, rapport qualité et repli automatique. Ratios stricts 9:16 et 16:9."
+              --title "LipSync AI Studio v0.8.1 Placement labial corrigé" \
+              --notes "Correction du rendu observé sur 1000121033.mp4 : le masque génératif utilisait un repère SurfaceTexture incompatible et pouvait agir sur le front. Les coordonnées vidéo, visage et bouche sont maintenant unifiées, le masque Wav2Lip est centré directement sur la bouche détectée et une barrière rejette toute fusion hors du visage. Wav2Lip, Vosk français, la correction temporelle et les ratios 9:16/16:9 sont conservés."
           fi
