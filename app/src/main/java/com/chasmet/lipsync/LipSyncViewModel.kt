@@ -110,7 +110,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             )
                         )
                     }
-                    val faceAnalysis = FaceTrackAnalyzer().analyze(videoFile)
+                    val faceAnalysis = FaceTrackAnalyzer(context).analyze(videoFile)
 
                     val startUs = (current.audioStartSeconds * 1_000_000L).toLong()
                     val videoDurationUs = video.durationMs * 1_000L
@@ -208,14 +208,16 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                     } else {
                         "guidage audio automatique"
                     }
-                    qualitySummary = "${renderReport.engineName} • $speechLabel"
+                    val visualQuality = (renderReport.averageQuality * 100f).toInt()
+                    qualitySummary = "${renderReport.engineName} • qualité $visualQuality % • $speechLabel"
 
                     _uiState.update {
                         it.copy(
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_TRANSCODE,
                                 0.81f,
-                                "Audio final • ${renderReport.generatedFrames} images générées"
+                                "Audio final • ${renderReport.generatedFrames} images • " +
+                                    "${renderReport.protectedFrames} protégées"
                             )
                         )
                     }

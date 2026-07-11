@@ -43,6 +43,29 @@ jobs:
           echo "$expected  $model" | sha256sum --check --strict
           test "$(stat --format=%s "$model")" -eq 214402122
 
+      - name: Restaurer Face Landmarker en cache
+        id: cache-face-landmarker
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/face_landmarker.task
+          key: face-landmarker-478-64184e22-v1
+
+      - name: Télécharger et authentifier Face Landmarker 478 points
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="app/src/main/assets/face_landmarker.task"
+          url="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+          expected="64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
+          mkdir -p "$(dirname "$model")"
+          if [ ! -f "$model" ]; then
+            curl --fail --location --retry 4 --retry-all-errors \
+              --output "$model.part" "$url"
+            mv "$model.part" "$model"
+          fi
+          echo "$expected  $model" | sha256sum --check --strict
+          test "$(stat --format=%s "$model")" -eq 3758596
+
       - name: Restaurer Vosk français en cache
         id: cache-vosk-fr
         uses: actions/cache@v4
@@ -70,6 +93,11 @@ jobs:
         run: |
           python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
           python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v4.json >/dev/null
+          python -m json.tool app/src/main/assets/chk_personal_dental_profile_v1.json >/dev/null
+          python -m json.tool training/model_v4_report.json >/dev/null
+          python -m json.tool training/dental_profile_v11_report.json >/dev/null
+          python -m json.tool training/new_videos_v4_comparison.json >/dev/null
+          python -m json.tool training/blend_mask_v11_calibration.json >/dev/null
           python -m json.tool training/diagnostic_mouth_position_1000121033.json >/dev/null
           python - <<'PY'
           import base64
@@ -81,7 +109,10 @@ jobs:
           model = json.loads(Path("app/src/main/assets/chk_personal_lip_model_v1.json").read_text())
           assert model["input_size"] == len(model["input_mean"])
           assert model["input_size"] == len(model["input_scale"])
-          assert model["version"] >= 3
+          assert model["version"] == 4
+          assert model["name"] == "CHK-Personal-LipMotion-v4-DentalGuarded"
+          assert model["training"]["videos_seen"] >= 32
+          assert model["training"]["samples"] >= 6500
           assert len(model["audio_features"]) == 6
           previous = model["input_size"]
           for layer in model["layers"]:
@@ -91,6 +122,39 @@ jobs:
               assert len(weights) == layer["rows"] * layer["cols"]
               previous = layer["cols"]
           assert previous == 3
+
+          model_report = json.loads(Path("training/model_v4_report.json").read_text())
+          anti = model_report["anti_regression"]
+          assert anti["candidate_mean_target_mae_not_worse"]
+          assert anti["candidate_mean_visual_mae_not_worse"]
+          assert all(
+              candidate <= baseline
+              for candidate, baseline in zip(
+                  anti["candidate_target"]["mae"], anti["baseline_target"]["mae"]
+              )
+          )
+          assert all(
+              candidate <= baseline
+              for candidate, baseline in zip(
+                  anti["candidate_visual"]["mae"], anti["baseline_visual"]["mae"]
+              )
+          )
+
+          dental = json.loads(
+              Path("app/src/main/assets/chk_personal_dental_profile_v1.json").read_text()
+          )
+          assert dental["version"] == 1
+          assert dental["training"]["videos_examined"] == 3
+          assert dental["training"]["visible_teeth_frames"] >= 50
+          assert dental["training"]["source_files_embedded"] is False
+          assert 0.75 <= dental["upper_teeth_share_p50"] <= 1.0
+
+          comparison = json.loads(Path("training/new_videos_v4_comparison.json").read_text())
+          assert comparison["all_outputs_improved"]
+          assert len(comparison["videos"]) == 3
+          mask = json.loads(Path("training/blend_mask_v11_calibration.json").read_text())
+          assert mask["affected_area_reduction_percent"] >= 80
+          assert mask["v11_affected_percent"] < 2.0
 
           profile = json.loads(Path("app/src/main/assets/chk_temporal_motion_profile_v4.json").read_text())
           assert profile["version"] == 4
@@ -113,6 +177,12 @@ jobs:
               "bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
           )
 
+          face_landmarker = Path("app/src/main/assets/face_landmarker.task")
+          assert face_landmarker.stat().st_size == 3_758_596
+          assert hashlib.sha256(face_landmarker.read_bytes()).hexdigest() == (
+              "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
+          )
+
           vosk = Path("app/src/main/assets/vosk-model-small-fr-0.22.zip")
           assert hashlib.sha256(vosk.read_bytes()).hexdigest() == (
               "cabf6180e177eb9b3a9a9d43a437bd5e549f3a7d09525e5d69a3fed787be12ad"
@@ -131,27 +201,41 @@ jobs:
           aligner = Path("app/src/main/java/com/chasmet/lipsync/media/AcousticPhonemeAligner.kt").read_text()
           fusion = Path("app/src/main/java/com/chasmet/lipsync/media/SpeechGuidanceFusion.kt").read_text()
           corrector = Path("app/src/main/java/com/chasmet/lipsync/media/GeneratedFaceRgbaCorrector.kt").read_text()
+          mesh = Path("app/src/main/java/com/chasmet/lipsync/media/MediaPipeFaceMeshTracker.kt").read_text()
+          guard = Path("app/src/main/java/com/chasmet/lipsync/media/GeneratedMouthQualityGuard.kt").read_text()
           gradle = Path("app/build.gradle.kts").read_text()
+          manifest = Path("app/src/main/AndroidManifest.xml").read_text()
           roadmap = Path("ROADMAP_PHONEME_V10.md").read_text()
 
-          assert "vLogicalCoord - uMouthCenter" in renderer
+          assert "mouthHalfMetric" in renderer
+          assert "canonicalFaceDelta" in renderer
           assert "setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)" in analyzer
+          assert ".enableTracking()" not in analyzer
           assert "FaceContour.UPPER_LIP_TOP" in analyzer
+          assert "detectForVideo" in mesh
+          assert "MIN_LANDMARKS = 468" in mesh
+          assert "DentalVisibilityPolicy" in guard
           assert "LipTrackingSource.PREDICTION" in tracker
           assert '"bonjour" to listOf("b", "on", "j", "ou", "r")' in lexicon
           assert "FRAME_US" in aligner
           assert "SEARCH_RADIUS_FRAMES" in aligner
           assert "MAX_ALIGNED_GUIDANCE = 0.88f" in fusion
-          assert "MAX_BLEND = 0.82f" in corrector
-          assert 'versionName = "0.10.0"' in gradle
+          assert "MAX_BLEND = 0.58f" in corrector
+          assert 'versionName = "0.11.0"' in gradle
+          assert "android.permission.INTERNET" not in manifest
           assert "Contre-arguments" in roadmap
           assert "Montreal Forced Aligner" in roadmap
 
           print(
-              f"Moteurs validés : Wav2Lip 256 + Vosk français + "
-              f"{model['name']} + {profile['name']} + traqueur labial + aligneur phonétique"
+              f"Moteurs validés : Wav2Lip 256 + Face Landmarker 478 + Vosk français + "
+              f"{model['name']} + garde dentaire + aligneur phonétique"
           )
           PY
+
+          if git ls-files | grep -E '\.(mp4|mov|mkv|avi|jpg|jpeg|png|wav)$' >/dev/null; then
+            echo "Un média utilisateur ne doit jamais être suivi dans Git" >&2
+            exit 1
+          fi
 
       - name: Installer Java 17
         uses: actions/setup-java@v4
@@ -195,13 +279,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.10.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.11.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.10.0
-          path: LipSync-AI-Studio-v0.10.0.apk
+          name: LipSync-AI-Studio-v0.11.0
+          path: LipSync-AI-Studio-v0.11.0.apk
           if-no-files-found: error
           compression-level: 0
 
@@ -210,11 +294,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.10.0 >/dev/null 2>&1; then
-            gh release upload v0.10.0 LipSync-AI-Studio-v0.10.0.apk --clobber
+          if gh release view v0.11.0 >/dev/null 2>&1; then
+            gh release upload v0.11.0 LipSync-AI-Studio-v0.11.0.apk --clobber
           else
-            gh release create v0.10.0 LipSync-AI-Studio-v0.10.0.apk \
+            gh release create v0.11.0 LipSync-AI-Studio-v0.11.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.10.0 Alignement phonétique" \
-              --notes "Ajout d'un lexique phonétique français, d'un alignement acoustique toutes les 10 ms dans les fenêtres Vosk, d'une coarticulation renforcée et d'une correction visuelle plus nette des fermetures, ouvertures, largeurs et rondeurs. Exemple bonjour : B, ON, J, OU, R. Le traqueur labial, Wav2Lip, les ratios et les replis restent actifs."
+              --title "LipSync AI Studio v0.11.0 Lèvres et dents personnelles" \
+              --notes "Maillage facial MediaPipe 478 points, correction du roulis, masque labial réduit et respect exact des sorties 9:16/16:9. Le modèle personnel v4 et la garde dentaire image par image préservent le sourire, les dents supérieures, la couleur, les détails et la stabilité temporelle. Traitement entièrement local, sans téléversement des vidéos."
           fi

@@ -20,6 +20,7 @@ internal class TextureRender(
     private val outputWidth: Int,
     private val outputHeight: Int,
     rotationDegrees: Int,
+    private val sourceAspect: Float,
     private val viewportX: Int,
     private val viewportY: Int,
     private val viewportWidth: Int,
@@ -67,6 +68,8 @@ internal class TextureRender(
     private var uFaceCenterHandle = 0
     private var uFaceSizeHandle = 0
     private var uGeneratedStrengthHandle = 0
+    private var uFaceRollHandle = 0
+    private var uSourceAspectHandle = 0
 
     private var cropPositionHandle = 0
     private var cropTextureHandle = 0
@@ -74,6 +77,8 @@ internal class TextureRender(
     private var cropCenterHandle = 0
     private var cropSizeHandle = 0
     private var cropStMatrixHandle = 0
+    private var cropRollHandle = 0
+    private var cropAspectHandle = 0
 
     init {
         Matrix.setIdentityM(stMatrix, 0)
@@ -109,6 +114,8 @@ internal class TextureRender(
         uFaceCenterHandle = GLES20.glGetUniformLocation(program, "uFaceCenter")
         uFaceSizeHandle = GLES20.glGetUniformLocation(program, "uFaceSize")
         uGeneratedStrengthHandle = GLES20.glGetUniformLocation(program, "uGeneratedStrength")
+        uFaceRollHandle = GLES20.glGetUniformLocation(program, "uFaceRoll")
+        uSourceAspectHandle = GLES20.glGetUniformLocation(program, "uSourceAspect")
 
         cropPositionHandle = GLES20.glGetAttribLocation(cropProgram, "aPosition")
         cropTextureHandle = GLES20.glGetAttribLocation(cropProgram, "aTextureCoord")
@@ -116,6 +123,8 @@ internal class TextureRender(
         cropCenterHandle = GLES20.glGetUniformLocation(cropProgram, "uCropCenter")
         cropSizeHandle = GLES20.glGetUniformLocation(cropProgram, "uCropSize")
         cropStMatrixHandle = GLES20.glGetUniformLocation(cropProgram, "uSTMatrix")
+        cropRollHandle = GLES20.glGetUniformLocation(cropProgram, "uCropRoll")
+        cropAspectHandle = GLES20.glGetUniformLocation(cropProgram, "uSourceAspect")
 
         val textures = IntArray(1)
         GLES20.glGenTextures(1, textures, 0)
@@ -180,6 +189,8 @@ internal class TextureRender(
         GLES20.glUniformMatrix4fv(cropStMatrixHandle, 1, false, stMatrix, 0)
         GLES20.glUniform2f(cropCenterHandle, face.centerX, face.centerY)
         GLES20.glUniform2f(cropSizeHandle, face.width, face.height)
+        GLES20.glUniform1f(cropRollHandle, face.rollDegrees)
+        GLES20.glUniform1f(cropAspectHandle, sourceAspect.coerceIn(0.25f, 4f))
         setTriangleAttributes(cropPositionHandle, cropTextureHandle)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         GLES20.glReadPixels(
@@ -250,15 +261,21 @@ internal class TextureRender(
         GLES20.glUniform1f(uClosureHandle, viseme.closure.coerceIn(0f, 1f))
         GLES20.glUniform2f(uFaceCenterHandle, face.centerX, face.centerY)
         GLES20.glUniform2f(uFaceSizeHandle, face.width, face.height)
+        GLES20.glUniform1f(uFaceRollHandle, face.rollDegrees)
+        GLES20.glUniform1f(uSourceAspectHandle, sourceAspect.coerceIn(0.25f, 4f))
         GLES20.glUniform1f(uHasGeneratedHandle, if (generatedFace != null) 1f else 0f)
 
         val generatedStrength = if (generatedFace == null) {
             0f
         } else {
-            (0.90f + generatedFace.audioActivity * 0.06f) *
-                ((faceConfidence - 0.20f) / 0.60f).coerceIn(0.72f, 1f)
+            GeneratedBlendPolicy.strength(
+                faceConfidence = faceConfidence,
+                audioActivity = generatedFace.audioActivity,
+                qualityConfidence = generatedFace.quality.confidence,
+                protectedFrame = generatedFace.quality.protectedFrame
+            )
         }
-        GLES20.glUniform1f(uGeneratedStrengthHandle, generatedStrength.coerceIn(0f, 0.97f))
+        GLES20.glUniform1f(uGeneratedStrengthHandle, generatedStrength)
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         checkGlError("glDrawArrays")
@@ -428,6 +445,8 @@ internal class TextureRender(
             uniform vec2 uMouthSize;
             uniform vec2 uFaceCenter;
             uniform vec2 uFaceSize;
+            uniform float uFaceRoll;
+            uniform float uSourceAspect;
             uniform float uOpen;
             uniform float uWidth;
             uniform float uRound;
@@ -435,14 +454,30 @@ internal class TextureRender(
             uniform float uHasGenerated;
             uniform float uGeneratedStrength;
 
+            vec2 rotate2d(vec2 value, float radians) {
+                float c = cos(radians);
+                float s = sin(radians);
+                return vec2(c * value.x - s * value.y, s * value.x + c * value.y);
+            }
+
             vec2 sourceCoord(vec2 logicalCoord) {
                 return (uSTMatrix * vec4(logicalCoord, 0.0, 1.0)).xy;
             }
 
             void main() {
+                float safeAspect = max(uSourceAspect, 0.001);
+                float roll = radians(uFaceRoll);
                 vec2 safeMouthSize = max(uMouthSize, vec2(0.001));
-                vec2 mouthDelta = vLogicalCoord - uMouthCenter;
-                vec2 mouthEllipse = mouthDelta / safeMouthSize;
+                vec2 mouthHalfMetric = vec2(
+                    safeMouthSize.x * 0.5 * safeAspect,
+                    safeMouthSize.y * 0.5
+                );
+                vec2 mouthDeltaMetric = vec2(
+                    (vLogicalCoord.x - uMouthCenter.x) * safeAspect,
+                    vLogicalCoord.y - uMouthCenter.y
+                );
+                vec2 canonicalMouthDelta = rotate2d(mouthDeltaMetric, -roll);
+                vec2 mouthEllipse = canonicalMouthDelta / max(mouthHalfMetric, vec2(0.001));
                 float distanceFromMouth = dot(mouthEllipse, mouthEllipse);
                 float influence = 1.0 - smoothstep(0.30, 1.00, distanceFromMouth);
                 influence *= 1.0 - uHasGenerated;
@@ -451,37 +486,41 @@ internal class TextureRender(
                 float silentClosure = 1.0 - smoothstep(0.025, 0.16, activity);
                 float closure = max(uClosure, silentClosure * 0.76);
                 float speechOpen = smoothstep(0.035, 0.82, uOpen);
-
                 float horizontalTarget = 1.0 + uWidth * 0.20 - uRound * 0.13;
                 horizontalTarget = mix(horizontalTarget, 0.94, closure * 0.36);
                 float verticalTarget = mix(0.78, 1.38, speechOpen);
                 verticalTarget = mix(verticalTarget, 0.69, closure);
-                float horizontalScale = mix(1.0, horizontalTarget, influence);
-                float verticalScale = mix(1.0, verticalTarget, influence);
-                vec2 warpedLogical = uMouthCenter + vec2(
-                    mouthDelta.x / horizontalScale,
-                    mouthDelta.y / verticalScale
+                vec2 warpedCanonical = vec2(
+                    canonicalMouthDelta.x / mix(1.0, horizontalTarget, influence),
+                    canonicalMouthDelta.y / mix(1.0, verticalTarget, influence)
                 );
-
+                vec2 warpedMetric = rotate2d(warpedCanonical, roll);
+                vec2 warpedLogical = uMouthCenter + vec2(
+                    warpedMetric.x / safeAspect,
+                    warpedMetric.y
+                );
                 vec4 color = texture2D(sTexture, sourceCoord(warpedLogical));
 
-                vec2 innerSize = vec2(
-                    safeMouthSize.x * (0.30 - uRound * 0.035),
-                    safeMouthSize.y * (0.10 + speechOpen * 0.24)
+                vec2 innerHalf = mouthHalfMetric * vec2(
+                    0.62 - uRound * 0.07,
+                    0.22 + speechOpen * 0.46
                 );
-                vec2 innerEllipse = mouthDelta / max(innerSize, vec2(0.001));
+                vec2 innerEllipse = canonicalMouthDelta / max(innerHalf, vec2(0.001));
                 float innerMask = 1.0 - smoothstep(
-                    0.52,
-                    1.0,
-                    dot(innerEllipse, innerEllipse)
+                    0.52, 1.0, dot(innerEllipse, innerEllipse)
                 );
                 float naturalShade = innerMask * speechOpen * (1.0 - closure) * 0.10;
                 naturalShade *= 1.0 - uHasGenerated;
                 color.rgb *= 1.0 - naturalShade;
 
                 vec2 safeFaceSize = max(uFaceSize, vec2(0.001));
-                vec2 faceLocal = (vLogicalCoord - (uFaceCenter - safeFaceSize * 0.5)) /
-                    safeFaceSize;
+                vec2 faceDeltaMetric = vec2(
+                    (vLogicalCoord.x - uFaceCenter.x) * safeAspect,
+                    vLogicalCoord.y - uFaceCenter.y
+                );
+                vec2 canonicalFaceDelta = rotate2d(faceDeltaMetric, -roll);
+                vec2 faceFullMetric = vec2(safeFaceSize.x * safeAspect, safeFaceSize.y);
+                vec2 faceLocal = vec2(0.5) + canonicalFaceDelta / faceFullMetric;
                 float insideFace = step(0.0, faceLocal.x) * step(faceLocal.x, 1.0) *
                     step(0.0, faceLocal.y) * step(faceLocal.y, 1.0);
                 vec4 generated = texture2D(
@@ -489,26 +528,27 @@ internal class TextureRender(
                     clamp(faceLocal, vec2(0.0), vec2(1.0))
                 );
 
-                // Le masque est défini autour de la bouche détectée, jamais autour
-                // d'une hauteur fixe du visage. Il reste donc correct même si la
-                // texture vidéo inverse l'axe vertical ou porte une rotation.
-                vec2 coreSize = max(
-                    vec2(safeMouthSize.x * 2.15, safeMouthSize.y * 2.45),
-                    vec2(safeFaceSize.x * 0.16, safeFaceSize.y * 0.105)
+                // Les dimensions détectées sont des diamètres complets. Leur
+                // conversion en demi-axes évite le masque géant de la v0.10.
+                vec2 faceHalfMetric = faceFullMetric * 0.5;
+                vec2 coreHalf = max(
+                    mouthHalfMetric * vec2(1.14, 1.28),
+                    faceHalfMetric * vec2(0.30, 0.18)
                 );
-                vec2 coreDelta = mouthDelta / max(coreSize, vec2(0.001));
-                float mouthCore = 1.0 - smoothstep(0.56, 1.02, dot(coreDelta, coreDelta));
+                vec2 coreDelta = canonicalMouthDelta / max(coreHalf, vec2(0.001));
+                float mouthCore = 1.0 - smoothstep(0.50, 1.03, dot(coreDelta, coreDelta));
 
-                vec2 supportSize = max(
-                    vec2(safeMouthSize.x * 3.00, safeMouthSize.y * 3.25),
-                    vec2(safeFaceSize.x * 0.24, safeFaceSize.y * 0.16)
+                vec2 supportHalf = max(
+                    mouthHalfMetric * vec2(1.55, 1.72),
+                    faceHalfMetric * vec2(0.44, 0.27)
                 );
-                vec2 supportDelta = mouthDelta / max(supportSize, vec2(0.001));
-                float mouthSupport = 1.0 - smoothstep(0.52, 1.04, dot(supportDelta, supportDelta));
-
+                vec2 supportDelta = canonicalMouthDelta / max(supportHalf, vec2(0.001));
+                float mouthSupport = 1.0 - smoothstep(
+                    0.50, 1.04, dot(supportDelta, supportDelta)
+                );
                 float generatedMask = uHasGenerated * uGeneratedStrength * insideFace *
-                    max(mouthCore, mouthSupport * 0.52);
-                color = mix(color, generated, clamp(generatedMask, 0.0, 0.97));
+                    max(mouthCore, mouthSupport * 0.34);
+                color = mix(color, generated, clamp(generatedMask, 0.0, 0.94));
 
                 gl_FragColor = color;
             }
@@ -532,9 +572,24 @@ internal class TextureRender(
             uniform samplerExternalOES sTexture;
             uniform vec2 uCropCenter;
             uniform vec2 uCropSize;
+            uniform float uCropRoll;
+            uniform float uSourceAspect;
+            vec2 rotate2d(vec2 value, float radians) {
+                float c = cos(radians);
+                float s = sin(radians);
+                return vec2(c * value.x - s * value.y, s * value.x + c * value.y);
+            }
             void main() {
-                vec2 logicalCoord = uCropCenter +
-                    (vLogicalCoord - vec2(0.5)) * uCropSize;
+                float safeAspect = max(uSourceAspect, 0.001);
+                vec2 canonicalMetric = vec2(
+                    (vLogicalCoord.x - 0.5) * uCropSize.x * safeAspect,
+                    (vLogicalCoord.y - 0.5) * uCropSize.y
+                );
+                vec2 sourceMetric = rotate2d(canonicalMetric, radians(uCropRoll));
+                vec2 logicalCoord = uCropCenter + vec2(
+                    sourceMetric.x / safeAspect,
+                    sourceMetric.y
+                );
                 vec2 sampledCoord = (uSTMatrix * vec4(logicalCoord, 0.0, 1.0)).xy;
                 gl_FragColor = texture2D(
                     sTexture,

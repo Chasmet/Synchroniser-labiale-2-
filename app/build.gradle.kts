@@ -23,8 +23,8 @@ android {
         applicationId = "com.chasmet.lipsync"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.10.0"
+        versionCode = 15
+        versionName = "0.11.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -72,7 +72,7 @@ android {
 
     androidResources {
         // Les modèles sont déjà des fichiers binaires compressés ou mappés.
-        noCompress += listOf("onnx", "zip")
+        noCompress += listOf("onnx", "zip", "task")
     }
 }
 
@@ -91,6 +91,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("com.google.mediapipe:tasks-vision:0.10.29")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("com.github.wendykierp:JTransforms:3.1")
     implementation("net.java.dev.jna:jna:5.13.0@aar")

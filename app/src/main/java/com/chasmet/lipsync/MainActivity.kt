@@ -227,7 +227,7 @@ private fun LipSyncApp(
 
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    "Wav2Lip 256 local • NNAPI/XNNPACK • Aucun fichier envoyé sur Internet",
+                    "Maillage 478 points • garde dentaire personnelle • 100 % local",
                     color = AppColors.TextMuted,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center

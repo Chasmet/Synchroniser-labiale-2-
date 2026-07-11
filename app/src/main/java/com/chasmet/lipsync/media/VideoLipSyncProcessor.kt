@@ -14,7 +14,9 @@ import kotlin.math.min
 data class RenderReport(
     val generatedFrames: Int,
     val fallbackFrames: Int,
-    val engineName: String
+    val engineName: String,
+    val averageQuality: Float,
+    val protectedFrames: Int
 )
 
 class VideoLipSyncProcessor {
@@ -39,6 +41,8 @@ class VideoLipSyncProcessor {
         var generativeEngine: Wav2LipEngine? = null
         var generatedFrames = 0
         var fallbackFrames = 0
+        var protectedFrames = 0
+        var qualitySum = 0.0
 
         try {
             extractor.setDataSource(inputVideo.absolutePath)
@@ -101,6 +105,7 @@ class VideoLipSyncProcessor {
                 outputWidth = geometry.outputWidth,
                 outputHeight = geometry.outputHeight,
                 rotationDegrees = geometry.rotationDegrees,
+                sourceAspect = encodedWidth.toFloat() / encodedHeight.coerceAtLeast(1).toFloat(),
                 viewportX = geometry.viewportX,
                 viewportY = geometry.viewportY,
                 viewportWidth = geometry.viewportWidth,
@@ -227,6 +232,11 @@ class VideoLipSyncProcessor {
                                 val faceConfidence = faceAnalysis.faceTrack
                                     .confidenceAt(normalizedTimeUs)
                                 val temporalStability = faceStability(previousFace, faceRegion)
+                                val canonicalMouth = mouthRegion.inCanonicalFace(
+                                    face = faceRegion,
+                                    sourceAspect = encodedWidth.toFloat() /
+                                        encodedHeight.coerceAtLeast(1).toFloat()
+                                )
                                 val engine = generativeEngine
                                 val generatedFace = if (engine != null && faceConfidence >= 0.22f) {
                                     runCatching {
@@ -234,7 +244,8 @@ class VideoLipSyncProcessor {
                                         engine.infer(
                                             sourceRgbaBottomUp = crop,
                                             melChunk = melTimeline.chunkAt(normalizedTimeUs),
-                                            temporalStability = temporalStability
+                                            temporalStability = temporalStability,
+                                            canonicalMouth = canonicalMouth
                                         )
                                     }.onFailure {
                                         consecutiveGenerationFailures++
@@ -246,6 +257,8 @@ class VideoLipSyncProcessor {
 
                                 if (generatedFace != null) {
                                     generatedFrames++
+                                    qualitySum += generatedFace.quality.confidence.toDouble()
+                                    if (generatedFace.quality.protectedFrame) protectedFrames++
                                     consecutiveGenerationFailures = 0
                                 } else {
                                     fallbackFrames++
@@ -297,7 +310,11 @@ class VideoLipSyncProcessor {
                     "Wav2Lip 256 local"
                 } else {
                     "Moteur Pro v4 de secours"
-                }
+                },
+                averageQuality = if (generatedFrames > 0) {
+                    (qualitySum / generatedFrames).toFloat().coerceIn(0f, 1f)
+                } else 0f,
+                protectedFrames = protectedFrames
             )
         } finally {
             runCatching { generativeEngine?.close() }
@@ -319,7 +336,9 @@ class VideoLipSyncProcessor {
             abs(current.centerY - previous.centerY)
         val sizeMotion = abs(current.width - previous.width) +
             abs(current.height - previous.height)
-        return (1f - centerMotion * 6f - sizeMotion * 3f).coerceIn(0f, 1f)
+        val rollMotion = abs(normalizeAngleDegrees(current.rollDegrees - previous.rollDegrees)) / 45f
+        return (1f - centerMotion * 6f - sizeMotion * 3f - rollMotion * 0.35f)
+            .coerceIn(0f, 1f)
     }
 
     private fun chooseBitrate(width: Int, height: Int, frameRate: Int): Int {

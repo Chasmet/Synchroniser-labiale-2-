@@ -1,0 +1,27 @@
+{
+  "name": "CHK-Personal-DentalProfile-v1",
+  "version": 1,
+  "training": {
+    "videos_examined": 3,
+    "videos_readable": 3,
+    "frames_examined": 249,
+    "mouth_frames": 207,
+    "visible_teeth_frames": 69,
+    "source_files_embedded": false
+  },
+  "enamel_luma_to_skin_p10": 1.206545,
+  "enamel_luma_to_skin_p50": 1.304335,
+  "enamel_luma_to_skin_p90": 2.00277,
+  "enamel_saturation_p50": 0.462745,
+  "enamel_rgb_to_skin_p50": [
+    1.152174,
+    1.4375,
+    1.5
+  ],
+  "visible_tooth_area_p50": 0.16092,
+  "visible_tooth_area_p90": 0.412863,
+  "cavity_area_p50": 0.010526,
+  "cavity_luma_to_skin_p50": 0.335597,
+  "detail_sigma_p50": 0.130293,
+  "upper_teeth_share_p50": 0.941176
+}
