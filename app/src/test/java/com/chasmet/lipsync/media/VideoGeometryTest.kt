@@ -83,4 +83,52 @@ class VideoGeometryTest {
         assertEquals(720, geometry.viewportWidth)
         assertEquals(1280, geometry.viewportHeight)
     }
+
+    @Test
+    fun portraitEncodedFramesNeedNoFinalRotationForPortraitChoice() {
+        val hint = finalOrientationHint(
+            encodedWidth = 720,
+            encodedHeight = 1280,
+            aspectRatio = OutputAspectRatio.PORTRAIT_9_16
+        )
+
+        assertEquals(0, hint)
+        assertEquals(DisplayedDimensions(720, 1280), displayedDimensions(720, 1280, hint))
+    }
+
+    @Test
+    fun landscapeEncodedFramesAreRotatedForPortraitChoice() {
+        val hint = finalOrientationHint(
+            encodedWidth = 1280,
+            encodedHeight = 720,
+            aspectRatio = OutputAspectRatio.PORTRAIT_9_16
+        )
+
+        assertEquals(90, hint)
+        assertEquals(DisplayedDimensions(720, 1280), displayedDimensions(1280, 720, hint))
+    }
+
+    @Test
+    fun landscapeEncodedFramesNeedNoFinalRotationForLandscapeChoice() {
+        val hint = finalOrientationHint(
+            encodedWidth = 1280,
+            encodedHeight = 720,
+            aspectRatio = OutputAspectRatio.LANDSCAPE_16_9
+        )
+
+        assertEquals(0, hint)
+        assertEquals(DisplayedDimensions(1280, 720), displayedDimensions(1280, 720, hint))
+    }
+
+    @Test
+    fun portraitEncodedFramesAreRotatedForLandscapeChoice() {
+        val hint = finalOrientationHint(
+            encodedWidth = 720,
+            encodedHeight = 1280,
+            aspectRatio = OutputAspectRatio.LANDSCAPE_16_9
+        )
+
+        assertEquals(90, hint)
+        assertEquals(DisplayedDimensions(1280, 720), displayedDimensions(720, 1280, hint))
+    }
 }
