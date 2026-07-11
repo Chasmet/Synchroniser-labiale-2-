@@ -1,0 +1,26 @@
+{
+  "name": "CHK-Temporal-Motion-v3",
+  "version": 3,
+  "training": {
+    "videos_total": 21,
+    "new_videos_analyzed": 3,
+    "duration_seconds_total": 337.285,
+    "new_duration_seconds": 50.855,
+    "samples_total": 6695,
+    "new_visual_audio_pairs": 1154,
+    "mouth_detection_rate": 0.908,
+    "source_files_embedded": false,
+    "rejected_candidate_models": 1,
+    "rejection_reason": "validation moins bonne que le modèle existant"
+  },
+  "inference": {
+    "look_ahead_frames": 2,
+    "attack_factor": 0.66,
+    "release_factor": 0.36,
+    "closure_strength": 0.78,
+    "openness_gain": 1.20,
+    "width_gain": 1.10,
+    "roundness_gain": 1.08,
+    "minimum_speech_gate": 0.025
+  }
+}
