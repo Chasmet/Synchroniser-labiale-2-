@@ -14,7 +14,7 @@ import java.nio.channels.FileChannel
 import java.util.EnumSet
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
+
 
 data class GeneratedFace(
     val rgba: ByteBuffer,
@@ -28,7 +28,7 @@ data class GeneratedFace(
  */
 class Wav2LipEngine(context: Context) : AutoCloseable {
 
-    private val environment = OrtEnvironment.getEnvironment("lipsync-generative-v5")
+    private val environment = OrtEnvironment.getEnvironment("lipsync-generative-v8")
     private val options = OrtSession.SessionOptions()
     private val assetDescriptor = context.assets.openFd(MODEL_ASSET)
     private val assetStream = FileInputStream(assetDescriptor.fileDescriptor)
@@ -99,7 +99,8 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
     fun infer(
         sourceRgbaBottomUp: ByteBuffer,
         melChunk: FloatArray,
-        temporalStability: Float
+        temporalStability: Float,
+        viseme: VisemeFrame
     ): GeneratedFace {
         require(sourceRgbaBottomUp.remaining() >= IMAGE_SIZE * IMAGE_SIZE * RGBA_CHANNELS)
         require(melChunk.size == MEL_FLOATS)
@@ -128,6 +129,7 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
             temporalStability = temporalStability
         )
         colorMatchLowerFace(sourceRgbaBottomUp, prediction)
+        GeneratedFacePhonemeCorrector.apply(prediction, viseme)
         predictionToRgbaBottomUp(prediction, rgbaOutput)
         return GeneratedFace(rgbaOutput.duplicate().apply { position(0) }, audioActivity)
     }
