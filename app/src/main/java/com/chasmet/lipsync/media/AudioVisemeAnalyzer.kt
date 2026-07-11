@@ -8,19 +8,25 @@ import android.media.MediaFormat
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * Analyse locale du MP3 et combine le signal audio avec le réseau neuronal
- * personnalisé entraîné sur les mouvements de bouche de l'utilisateur.
+ * Moteur hybride local : réseau neuronal personnel, analyse fréquentielle,
+ * anticipation temporelle et détection des fermetures rapides des lèvres.
  */
 class AudioVisemeAnalyzer(context: Context) {
 
     private val personalModel = runCatching {
         PersonalLipModel.load(context.applicationContext)
     }.getOrNull()
+
+    private val temporalProfile = runCatching {
+        TemporalMotionProfile.load(context.applicationContext)
+    }.getOrDefault(TemporalMotionProfile.DEFAULT)
 
     fun analyze(audioFile: File, startUs: Long = 0L): VisemeTimeline {
         val extractor = MediaExtractor()
@@ -132,27 +138,68 @@ class AudioVisemeAnalyzer(context: Context) {
         }
 
         val sortedEnergy = rawFrames.map { it.rms }.sorted()
-        val peakIndex = (sortedEnergy.lastIndex * 0.95f)
-            .toInt()
-            .coerceIn(0, sortedEnergy.lastIndex)
-        val peak = max(sortedEnergy[peakIndex], 0.0001f)
+        val noiseFloor = percentile(sortedEnergy, 0.18f)
+        val peak = max(percentile(sortedEnergy, 0.95f), noiseFloor + 0.0001f)
+        val targets = ArrayList<VisemeFrame>(rawFrames.size)
+        val closures = FloatArray(rawFrames.size)
+        val gates = FloatArray(rawFrames.size)
 
-        val frames = rawFrames.mapIndexed { index, raw ->
-            val energy = sqrt((raw.rms / peak).coerceIn(0f, 1.4f)).coerceIn(0f, 1f)
-            val silenceGate = ((energy - 0.035f) / 0.965f).coerceIn(0f, 1f)
-            val fricative = ((raw.zeroCrossingRate - 0.08f) / 0.24f).coerceIn(0f, 1f)
-            val transient = (raw.transientRate * 7f).coerceIn(0f, 1f)
-            val voiced = (1f - fricative).coerceIn(0f, 1f)
+        rawFrames.forEachIndexed { index, raw ->
+            val previous = rawFrames[(index - 1).coerceAtLeast(0)]
+            val future = rawFrames[
+                (index + temporalProfile.lookAheadFrames).coerceAtMost(rawFrames.lastIndex)
+            ]
 
-            val signalOpen = (
-                silenceGate * (0.20f + energy * 0.78f) * (0.78f + transient * 0.22f)
-            ).coerceIn(0f, 1f)
-            val signalWidth = (
-                silenceGate * (fricative * 0.70f + transient * 0.30f)
-            ).coerceIn(0f, 1f)
-            val signalRound = (
-                silenceGate * voiced * (1f - transient * 0.45f) * 0.85f
-            ).coerceIn(0f, 1f)
+            val energy = normalizeEnergy(raw.rms, noiseFloor, peak)
+            val futureEnergy = normalizeEnergy(future.rms, noiseFloor, peak)
+            val anticipatedEnergy = max(energy, futureEnergy * 0.82f)
+            val silenceGate = (
+                (anticipatedEnergy - temporalProfile.minimumSpeechGate) /
+                    (1f - temporalProfile.minimumSpeechGate).coerceAtLeast(0.01f)
+                ).coerceIn(0f, 1f)
+            gates[index] = silenceGate
+
+            val transient = (raw.transientRate * 8.5f).coerceIn(0f, 1f)
+            val fricativeFromZcr = ((raw.zeroCrossingRate - 0.055f) / 0.27f)
+                .coerceIn(0f, 1f)
+            val fricative = (
+                fricativeFromZcr * 0.58f + raw.highBand * 0.62f
+                ).coerceIn(0f, 1f)
+            val voiced = (1f - fricative * 0.78f).coerceIn(0f, 1f)
+            val vowelBody = (
+                raw.lowBand * 0.34f + raw.midBand * 0.78f
+                ).coerceIn(0f, 1f)
+            val roundedVowel = (
+                raw.lowBand * (1f - raw.highBand) * (0.70f + raw.spectralTilt * 0.30f)
+                ).coerceIn(0f, 1f)
+            val wideVowel = (
+                raw.midBand * 0.55f + raw.highBand * 0.35f + fricative * 0.42f
+                ).coerceIn(0f, 1f)
+
+            var signalOpen = (
+                silenceGate * (
+                    0.10f + anticipatedEnergy * 0.58f + vowelBody * 0.40f + transient * 0.10f
+                    )
+                ).coerceIn(0f, 1f)
+            var signalWidth = (
+                silenceGate * (wideVowel * 0.74f + transient * 0.22f)
+                ).coerceIn(0f, 1f)
+            var signalRound = (
+                silenceGate * voiced * roundedVowel * (1f - transient * 0.22f)
+                ).coerceIn(0f, 1f)
+
+            val previousEnergy = normalizeEnergy(previous.rms, noiseFloor, peak)
+            val drop = ((previousEnergy - energy) / (previousEnergy + 0.04f))
+                .coerceIn(0f, 1f)
+            val rebound = ((futureEnergy - energy) / (futureEnergy + 0.04f))
+                .coerceIn(0f, 1f)
+            val closure = (
+                drop * rebound * (1f - fricative) * max(previousEnergy, futureEnergy)
+                ).coerceIn(0f, 1f)
+            closures[index] = closure
+            signalOpen *= 1f - closure * temporalProfile.closureStrength
+            signalWidth *= 1f - closure * temporalProfile.closureStrength * 0.58f
+            signalRound *= 1f - closure * temporalProfile.closureStrength * 0.42f
 
             val trained = personalModel?.predict(rawFrames, index)
             val signalBlend = personalModel?.signalBlend ?: 1f
@@ -160,43 +207,91 @@ class AudioVisemeAnalyzer(context: Context) {
 
             val openness = if (trained != null) {
                 signalOpen * signalBlend + trained[0] * silenceGate * trainedBlend
-            } else {
-                signalOpen
-            }
+            } else signalOpen
             val width = if (trained != null) {
                 signalWidth * signalBlend + trained[1] * silenceGate * trainedBlend
-            } else {
-                signalWidth
-            }
+            } else signalWidth
             val roundness = if (trained != null) {
                 signalRound * signalBlend + trained[2] * silenceGate * trainedBlend
+            } else signalRound
+
+            targets += VisemeFrame(
+                timeUs = raw.timeUs,
+                openness = smoothStep(
+                    (openness * temporalProfile.opennessGain).coerceIn(0f, 1f)
+                ),
+                width = smoothStep(
+                    (width * temporalProfile.widthGain).coerceIn(0f, 1f)
+                ),
+                roundness = smoothStep(
+                    (roundness * temporalProfile.roundnessGain).coerceIn(0f, 1f)
+                )
+            )
+        }
+
+        val temporal = applyTemporalMemory(targets, closures, gates)
+        return VisemeTimeline(
+            frames = temporal,
+            durationUs = temporal.last().timeUs + FRAME_DURATION_US
+        )
+    }
+
+    private fun applyTemporalMemory(
+        targets: List<VisemeFrame>,
+        closures: FloatArray,
+        gates: FloatArray
+    ): List<VisemeFrame> {
+        var openState = 0f
+        var widthState = 0f
+        var roundState = 0f
+        return targets.mapIndexed { index, target ->
+            val closureBoost = closures[index] * 0.52f
+            val openFactor = when {
+                target.openness > openState -> temporalProfile.attackFactor
+                closureBoost > 0.12f -> (temporalProfile.releaseFactor + closureBoost)
+                    .coerceAtMost(0.92f)
+                else -> temporalProfile.releaseFactor
+            }
+            val widthFactor = if (target.width > widthState) {
+                temporalProfile.attackFactor * 0.92f
             } else {
-                signalRound
+                temporalProfile.releaseFactor * 0.90f
+            }
+            val roundFactor = if (target.roundness > roundState) {
+                temporalProfile.attackFactor * 0.82f
+            } else {
+                temporalProfile.releaseFactor * 0.78f
             }
 
-            VisemeFrame(
-                timeUs = raw.timeUs,
-                openness = smoothStep((openness * 1.12f).coerceIn(0f, 1f)),
-                width = smoothStep(width.coerceIn(0f, 1f)),
-                roundness = smoothStep(roundness.coerceIn(0f, 1f))
+            openState += (target.openness - openState) * openFactor
+            widthState += (target.width - widthState) * widthFactor
+            roundState += (target.roundness - roundState) * roundFactor
+
+            if (gates[index] < 0.025f) {
+                openState *= 0.18f
+                widthState *= 0.18f
+                roundState *= 0.18f
+            }
+
+            target.copy(
+                openness = openState.coerceIn(0f, 1f),
+                width = widthState.coerceIn(0f, 1f),
+                roundness = roundState.coerceIn(0f, 1f)
             )
         }
+    }
 
-        val smoothed = frames.mapIndexed { index, frame ->
-            val from = (index - 1).coerceAtLeast(0)
-            val to = (index + 1).coerceAtMost(frames.lastIndex)
-            val window = frames.subList(from, to + 1)
-            frame.copy(
-                openness = window.map { it.openness }.average().toFloat(),
-                width = window.map { it.width }.average().toFloat(),
-                roundness = window.map { it.roundness }.average().toFloat()
-            )
-        }
+    private fun percentile(sorted: List<Float>, fraction: Float): Float {
+        if (sorted.isEmpty()) return 0f
+        val index = (sorted.lastIndex * fraction.coerceIn(0f, 1f)).toInt()
+            .coerceIn(0, sorted.lastIndex)
+        return sorted[index]
+    }
 
-        return VisemeTimeline(
-            frames = smoothed,
-            durationUs = smoothed.last().timeUs + 40_000L
-        )
+    private fun normalizeEnergy(value: Float, floor: Float, peak: Float): Float {
+        val normalized = ((value - floor) / (peak - floor).coerceAtLeast(0.0001f))
+            .coerceIn(0f, 1.35f)
+        return sqrt(normalized).coerceIn(0f, 1f)
     }
 
     private fun smoothStep(value: Float): Float {
@@ -209,6 +304,7 @@ class AudioVisemeAnalyzer(context: Context) {
         private val channels: Int
     ) {
         private val windowSize = max(1, (sampleRate * 0.040f).toInt())
+        private val monoWindow = FloatArray(windowSize)
         private val frames = mutableListOf<AudioFeatureFrame>()
         private var sampleInWindow = 0
         private var totalMonoSamples = 0L
@@ -253,6 +349,7 @@ class AudioVisemeAnalyzer(context: Context) {
         }
 
         private fun acceptMonoSample(sample: Float) {
+            if (sampleInWindow < monoWindow.size) monoWindow[sampleInWindow] = sample
             sumSquares += sample * sample
             if (hasPrevious) {
                 if ((sample >= 0f) != (previous >= 0f)) zeroCrossings++
@@ -274,12 +371,54 @@ class AudioVisemeAnalyzer(context: Context) {
             val startSample = totalMonoSamples - sampleInWindow
             val timeUs = startSample * 1_000_000L / sampleRate.coerceAtLeast(1)
 
-            frames += AudioFeatureFrame(timeUs, rms, zcr, transient)
+            val lowPower = goertzelPower(280f, count) + goertzelPower(560f, count)
+            val midPower = goertzelPower(950f, count) + goertzelPower(1_550f, count)
+            val highPower = goertzelPower(2_700f, count) + goertzelPower(4_200f, count)
+            val selectedPower = (lowPower + midPower + highPower).coerceAtLeast(1.0e-12)
+            val low = (lowPower / selectedPower).toFloat().coerceIn(0f, 1f)
+            val mid = (midPower / selectedPower).toFloat().coerceIn(0f, 1f)
+            val high = (highPower / selectedPower).toFloat().coerceIn(0f, 1f)
+            val tilt = ((low - high) / (low + mid + high + 0.0001f)).coerceIn(-1f, 1f)
+
+            frames += AudioFeatureFrame(
+                timeUs = timeUs,
+                rms = rms,
+                zeroCrossingRate = zcr,
+                transientRate = transient,
+                lowBand = low,
+                midBand = mid,
+                highBand = high,
+                spectralTilt = tilt
+            )
             sampleInWindow = 0
             sumSquares = 0.0
             zeroCrossings = 0
             transientSum = 0.0
         }
+
+        private fun goertzelPower(frequencyHz: Float, count: Int): Double {
+            if (count <= 1 || sampleRate <= 0) return 0.0
+            val safeFrequency = frequencyHz.coerceAtMost(sampleRate * 0.45f)
+            val omega = 2.0 * PI * safeFrequency / sampleRate.toDouble()
+            val coefficient = 2.0 * cos(omega)
+            var previousOne = 0.0
+            var previousTwo = 0.0
+            for (index in 0 until count.coerceAtMost(monoWindow.size)) {
+                val window = 0.5 - 0.5 * cos(
+                    2.0 * PI * index.toDouble() / (count - 1).coerceAtLeast(1).toDouble()
+                )
+                val current = monoWindow[index] * window +
+                    coefficient * previousOne - previousTwo
+                previousTwo = previousOne
+                previousOne = current
+            }
+            return previousTwo * previousTwo + previousOne * previousOne -
+                coefficient * previousOne * previousTwo
+        }
+    }
+
+    private companion object {
+        const val FRAME_DURATION_US = 40_000L
     }
 }
 
