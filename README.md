@@ -2,81 +2,88 @@
 
 Application Android locale de synchronisation labiale. Elle associe une vidéo contenant un visage à un MP3, recrée la zone labiale avec un réseau audio-visuel et exporte le résultat dans la galerie sans envoyer les fichiers sur Internet.
 
-## Version 0.8.1 placement labial corrigé
+## Version 0.9.0 traqueur labial dédié
 
 - véritable génération neuronale Wav2Lip 256 × 256 image par image ;
-- spectrogramme compatible Wav2Lip : 16 kHz, STFT 800/200 et 80 bandes Mel ;
 - reconnaissance vocale française locale Vosk avec mots et horodatages ;
-- détection locale de la parole, des silences et des pauses ;
-- conversion des mots français en formes de lèvres ;
-- corrections ciblées pour M/P/B, F/V, A/E/I, O/U et consonnes visibles ;
+- spectrogramme Mel, détection de parole, silences et pauses ;
+- traqueur dédié utilisant les contours supérieur et inférieur des lèvres ;
+- validation géométrique de la position, de la largeur, de la hauteur et de la symétrie ;
+- mémoire temporelle à vitesse constante pendant les pertes très courtes ;
+- rejet automatique d'une détection située sur le front, les joues ou hors du visage ;
+- retour prudent sur la dernière position fiable au lieu de déplacer le masque ;
+- analyse portée jusqu'à 10 repères par seconde, avec interpolation entre les repères ;
+- verrouillage du même visage lorsqu'il y a plusieurs personnes ;
+- repère OpenGL unique entre la vidéo, le visage et la bouche ;
+- masque Wav2Lip centré directement sur la bouche suivie ;
+- barrière de sécurité finale avant toute fusion générative ;
 - transcription utilisée seulement lorsque sa confiance est suffisante ;
-- Wav2Lip et le signal audio restent prioritaires sur le texte ;
-- repère OpenGL unifié entre la vidéo, le visage et la bouche ;
-- masque génératif centré directement sur la bouche détectée ;
-- suppression des anciens masques basés sur une hauteur fixe du visage ;
-- barrière de sécurité rejetant toute fusion labiale hors du cadre du visage ;
 - accélération locale ONNX Runtime avec NNAPI, XNNPACK puis CPU de secours ;
-- suivi verrouillé du même visage et interpolation temporelle des cadres ;
-- correction colorimétrique et stabilisation temporelle adaptative ;
 - compensation de 560 ms conservée pour le moteur Pro v4 de secours ;
-- rapport final indiquant le moteur utilisé, le nombre de mots et la confiance ;
 - choix obligatoire entre **9:16 vertical** et **16:9 horizontal** ;
-- sortie contrôlée en 720 × 1280 ou 1280 × 720 sans rotation MP4 supplémentaire ;
+- sortie contrôlée en 720 × 1280 ou 1280 × 720 ;
 - aucune vidéo, piste audio ou transcription envoyée sur Internet.
 
-## Correction du placement
+## Fonctionnement du traqueur
 
-Le résultat `1000121033.mp4` montrait une variation générative sur le front alors que les lèvres restaient presque fixes. Le diagnostic a identifié un mélange entre les coordonnées logiques du visage et les coordonnées transformées par `SurfaceTexture`.
+Le suivi ne dépend plus seulement de trois points du visage. ML Kit fournit maintenant quatre contours détaillés : haut de la lèvre supérieure, bas de la lèvre supérieure, haut de la lèvre inférieure et bas de la lèvre inférieure.
 
-La version 0.8.1 conserve désormais le visage et la bouche dans le même repère logique. La matrice Android est appliquée uniquement lors de la lecture des pixels vidéo. La zone générative est une ellipse calculée autour de la bouche réellement détectée, et non autour d'une position verticale prédéfinie.
+Chaque observation est contrôlée avant utilisation :
+
+1. les points doivent se trouver dans la partie basse du visage ;
+2. la taille des lèvres doit être cohérente avec la taille du visage ;
+3. la position doit rester proche de la trajectoire précédente ;
+4. un saut ou une taille impossible est rejeté ;
+5. pendant une perte courte, la trajectoire précédente est prédite ;
+6. après plusieurs pertes, le moteur revient sur une zone prudente et désactive la fusion si la confiance est trop faible.
+
+Cette architecture réduit fortement le risque qu'une animation soit appliquée ailleurs que sur les lèvres. Elle ne constitue pas une garantie absolue pour toutes les vidéos : une bouche entièrement cachée, un visage de profil extrême ou une image très floue peuvent toujours empêcher une détection fiable. Dans ce cas, l'application préfère ne pas appliquer Wav2Lip à cette image plutôt que modifier une mauvaise zone.
 
 ## Architecture de décision
 
-Le moteur utilise trois sources complémentaires :
+Le moteur utilise quatre sources complémentaires :
 
-1. le spectrogramme Mel pilote Wav2Lip ;
-2. la détection de parole ferme la bouche pendant les vrais silences ;
-3. le texte horodaté corrige seulement les phonèmes français les plus visibles.
+1. le traqueur de contours détermine la position réelle des lèvres ;
+2. le spectrogramme Mel pilote Wav2Lip ;
+3. la détection de parole ferme la bouche pendant les vrais silences ;
+4. le texte horodaté corrige seulement les phonèmes français les plus visibles.
 
-Une transcription peu fiable est rejetée automatiquement. L’application continue alors avec Wav2Lip et l’analyse audio, sans bloquer la génération.
-
-La feuille de route complète, les alternatives étudiées et leurs contre-arguments sont documentés dans `ROADMAP_AI_V8.md`.
+Une transcription peu fiable ou une position labiale douteuse est rejetée automatiquement. L’application continue avec les sources encore fiables sans bloquer l’export.
 
 ## Fonctionnalités
 
 - import d’une vidéo et d’un MP3 ;
 - choix du point de départ du son ;
-- détection et suivi local du visage avec ML Kit ;
+- détection du visage et contours labiaux ML Kit ;
+- suivi temporel spécialisé des lèvres ;
 - reconnaissance vocale française hors ligne avec Vosk ;
-- détection de parole et de silence ;
 - génération Wav2Lip 256 avec ONNX Runtime Android ;
 - rendu OpenGL avec fusion centrée sur la bouche ;
-- micro-corrections phonétiques appliquées au visage généré ;
-- moteur neuronal personnel Pro v4 recalibré comme secours ;
+- micro-corrections phonétiques ;
+- moteur neuronal personnel Pro v4 comme secours ;
 - progression par blocs de 30 secondes ;
 - export dans `Movies/LipSync AI` ;
 - aucun serveur et aucune API distante.
 
 ## Conseils
 
-- utiliser une personne principale avec une bouche visible ;
+- utiliser une personne principale avec la bouche visible ;
 - privilégier un visage de face ou légèrement de côté ;
-- utiliser une voix assez claire ;
-- commencer par une séquence de 5 à 15 secondes pour mesurer la vitesse du téléphone ;
+- éviter qu'une main ou un objet masque complètement la bouche ;
+- commencer par une séquence de 5 à 15 secondes ;
 - laisser le téléphone branché pour les traitements longs.
 
 ## Performances et stockage
 
-Les modèles Wav2Lip et Vosk sont inclus dans l’APK. Au premier traitement, le modèle vocal français est extrait dans l’espace privé de l’application. Cela demande du stockage supplémentaire mais évite toute connexion Internet pendant l’utilisation.
+Les modèles Wav2Lip et Vosk sont inclus dans l’APK. Au premier traitement, le modèle vocal français est extrait dans l’espace privé de l’application. Le traqueur labial n'ajoute aucun téléchargement : il utilise le moteur ML Kit déjà présent.
 
-Selon la puissance du téléphone, une seconde de vidéo peut demander plusieurs secondes de calcul. Si la reconnaissance vocale échoue, elle est ignorée. Si Wav2Lip échoue ou manque de mémoire, l’export continue avec le moteur Pro v4 recalibré.
+L'analyse des lèvres est plus fréquente que dans la version 0.8.1. Le prétraitement peut donc être légèrement plus long, mais la zone générative est mieux verrouillée. Si la reconnaissance vocale échoue, elle est ignorée. Si Wav2Lip échoue ou manque de mémoire, l’export continue avec le moteur Pro v4 recalibré.
 
 ## Entraînement, calibration et construction
 
-Le pipeline reproductible du modèle personnel se trouve dans `tools/train_personal_lip_model.py`. Les vidéos privées ne sont pas publiées : seuls les poids quantifiés et des rapports sans image sont conservés. Les diagnostics sont documentés dans `training/diagnostic_audio_sync_1000121007.json` et `training/diagnostic_mouth_position_1000121033.json` sans inclure les vidéos sources.
+Le pipeline reproductible du modèle personnel se trouve dans `tools/train_personal_lip_model.py`. Les vidéos privées ne sont pas publiées : seuls les poids quantifiés et des rapports sans image sont conservés. Les diagnostics sont documentés dans `training/` sans inclure les vidéos sources.
 
-GitHub Actions télécharge Wav2Lip et Vosk, vérifie strictement leurs empreintes SHA-256, contrôle les archives, valide les modèles et la calibration, exécute les tests et Android Lint, puis compile et publie l’APK signé.
+GitHub Actions télécharge Wav2Lip et Vosk, vérifie leurs empreintes SHA-256, valide le traqueur et les modèles, exécute les tests et Android Lint, puis compile et publie l’APK signé.
 
 ## Conditions des modèles
 

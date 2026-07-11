@@ -7,6 +7,7 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceContour
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.face.FaceLandmark
@@ -20,9 +21,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Analyse le visage sur toute la durée de la vidéo et produit une chronologie
- * interpolable de la bouche. Cette approche évite d'appliquer l'animation à une
- * position fixe lorsque la tête bouge.
+ * Analyse le visage sur toute la durée de la vidéo et produit deux chronologies :
+ * le visage complet et la bouche suivie par un traqueur labial spécialisé.
  */
 class FaceTrackAnalyzer {
 
@@ -36,6 +36,7 @@ class FaceTrackAnalyzer {
         FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
             .enableTracking()
             .build()
@@ -43,6 +44,7 @@ class FaceTrackAnalyzer {
 
     suspend fun analyze(videoFile: File): FaceAnalysis {
         val retriever = MediaMetadataRetriever()
+        val lipTracker = DedicatedLipTracker()
         return try {
             retriever.setDataSource(videoFile.absolutePath)
             val durationMs = retriever
@@ -75,24 +77,47 @@ class FaceTrackAnalyzer {
                         targetTrackingId = targetTrackingId
                     )
                     if (face != null) {
-                        val detected = mouthRegion(face, scaled.width, scaled.height)
+                        val newTrackingId = face.trackingId
+                        if (
+                            targetTrackingId != null &&
+                            newTrackingId != null &&
+                            targetTrackingId != newTrackingId
+                        ) {
+                            lipTracker.reset()
+                        }
+
                         val detectedFace = faceRegion(face, scaled.width, scaled.height)
+                        val lipResult = lipTracker.update(
+                            contourPoints = lipContourPoints(face),
+                            landmarkPoints = lipLandmarkPoints(face),
+                            faceBounds = faceBounds(face),
+                            imageWidth = scaled.width,
+                            imageHeight = scaled.height,
+                            timeUs = timeUs
+                        )
+                        val detected = lipResult.region
                         previousDisplayRegion = detected
-                        targetTrackingId = face.trackingId ?: targetTrackingId
+                        targetTrackingId = newTrackingId ?: targetTrackingId
+
                         val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
                             geometry.rotationDegrees
                         } else {
                             0
                         }
+                        val faceConfidence = detectionConfidence(face)
+                        val mouthConfidence = (
+                            lipResult.confidence * 0.76f + faceConfidence * 0.24f
+                            ).coerceIn(0f, 1f)
+
                         rawKeyframes += MouthKeyframe(
                             timeUs = timeUs,
                             region = detected.displayToEncoded(rotationToEncoded),
-                            confidence = detectionConfidence(face)
+                            confidence = mouthConfidence
                         )
                         rawFaceKeyframes += FaceKeyframe(
                             timeUs = timeUs,
                             region = detectedFace.displayToEncoded(rotationToEncoded),
-                            confidence = detectionConfidence(face)
+                            confidence = faceConfidence
                         )
                     }
                 } finally {
@@ -163,17 +188,22 @@ class FaceTrackAnalyzer {
             val accepted = if (rejected) previous else candidate
             val alpha = when {
                 index == 0 -> 1f
-                frame.confidence >= 0.85f -> 0.52f
-                frame.confidence >= 0.60f -> 0.38f
-                else -> 0.24f
+                frame.confidence >= 0.85f -> 0.62f
+                frame.confidence >= 0.60f -> 0.48f
+                frame.confidence >= 0.35f -> 0.32f
+                else -> 0.18f
             }
-            val filtered = previous.interpolate(accepted, alpha).copy(
-                centerX = previous.interpolate(accepted, alpha).centerX.coerceIn(0.02f, 0.98f),
-                centerY = previous.interpolate(accepted, alpha).centerY.coerceIn(0.02f, 0.98f),
-                width = previous.interpolate(accepted, alpha).width.coerceIn(0.035f, 0.48f),
-                height = previous.interpolate(accepted, alpha).height.coerceIn(0.025f, 0.32f)
+            val interpolated = previous.interpolate(accepted, alpha)
+            val filtered = interpolated.copy(
+                centerX = interpolated.centerX.coerceIn(0.02f, 0.98f),
+                centerY = interpolated.centerY.coerceIn(0.02f, 0.98f),
+                width = interpolated.width.coerceIn(0.035f, 0.48f),
+                height = interpolated.height.coerceIn(0.025f, 0.32f)
             )
-            result += frame.copy(region = filtered, confidence = if (rejected) 0.15f else frame.confidence)
+            result += frame.copy(
+                region = filtered,
+                confidence = if (rejected) 0.12f else frame.confidence
+            )
             previous = filtered
         }
         return result
@@ -209,11 +239,12 @@ class FaceTrackAnalyzer {
                 frame.confidence >= 0.60f -> 0.34f
                 else -> 0.22f
             }
-            val filtered = previous.interpolate(accepted, alpha).copy(
-                centerX = previous.interpolate(accepted, alpha).centerX.coerceIn(0.01f, 0.99f),
-                centerY = previous.interpolate(accepted, alpha).centerY.coerceIn(0.01f, 0.99f),
-                width = previous.interpolate(accepted, alpha).width.coerceIn(0.12f, 0.96f),
-                height = previous.interpolate(accepted, alpha).height.coerceIn(0.15f, 0.98f)
+            val interpolated = previous.interpolate(accepted, alpha)
+            val filtered = interpolated.copy(
+                centerX = interpolated.centerX.coerceIn(0.01f, 0.99f),
+                centerY = interpolated.centerY.coerceIn(0.01f, 0.99f),
+                width = interpolated.width.coerceIn(0.12f, 0.96f),
+                height = interpolated.height.coerceIn(0.15f, 0.98f)
             )
             result += frame.copy(
                 region = filtered,
@@ -231,10 +262,40 @@ class FaceTrackAnalyzer {
             FaceLandmark.MOUTH_BOTTOM
         ).count { face.getLandmark(it) != null }
         val landmarkScore = landmarkCount / 3f
+        val contourScore = (lipContourPoints(face).size / 32f).coerceIn(0f, 1f)
         val posePenalty = (
             abs(face.headEulerAngleY) / 55f + abs(face.headEulerAngleZ) / 65f
             ).coerceIn(0f, 0.65f)
-        return (0.35f + landmarkScore * 0.65f - posePenalty).coerceIn(0.10f, 1f)
+        return (
+            0.22f + landmarkScore * 0.28f + contourScore * 0.50f - posePenalty
+            ).coerceIn(0.08f, 1f)
+    }
+
+    private fun lipContourPoints(face: Face): List<LipPoint> {
+        return LIP_CONTOURS.flatMap { contourType ->
+            face.getContour(contourType)?.points.orEmpty()
+        }.map { LipPoint(it.x, it.y) }
+    }
+
+    private fun lipLandmarkPoints(face: Face): List<LipPoint> {
+        val left = face.getLandmark(FaceLandmark.MOUTH_LEFT)?.position ?: return emptyList()
+        val right = face.getLandmark(FaceLandmark.MOUTH_RIGHT)?.position ?: return emptyList()
+        val bottom = face.getLandmark(FaceLandmark.MOUTH_BOTTOM)?.position ?: return emptyList()
+        return listOf(
+            LipPoint(left.x, left.y),
+            LipPoint(right.x, right.y),
+            LipPoint(bottom.x, bottom.y)
+        )
+    }
+
+    private fun faceBounds(face: Face): FaceBoundsPx {
+        val box = face.boundingBox
+        return FaceBoundsPx(
+            left = box.left.toFloat(),
+            top = box.top.toFloat(),
+            right = box.right.toFloat(),
+            bottom = box.bottom.toFloat()
+        )
     }
 
     private fun readGeometry(
@@ -290,8 +351,8 @@ class FaceTrackAnalyzer {
 
     /**
      * Verrouille le même visage d'une image à l'autre. Le premier choix favorise
-     * un visage humain grand et proche du centre ; les choix suivants donnent la
-     * priorité à l'identifiant ML Kit puis à la continuité de la bouche.
+     * le grand visage central ; les choix suivants privilégient l'identifiant,
+     * le contour des lèvres et la continuité spatiale.
      */
     private fun selectTargetFace(
         faces: List<Face>,
@@ -318,11 +379,13 @@ class FaceTrackAnalyzer {
                 FaceLandmark.MOUTH_RIGHT,
                 FaceLandmark.MOUTH_BOTTOM
             ).count { face.getLandmark(it) != null } / 3f
+            val contourBonus = (lipContourPoints(face).size / 32f).coerceIn(0f, 1f)
 
             if (previousRegion == null) {
-                area * 4.2f + centerPrior * 0.72f + landmarkBonus * 0.42f
+                area * 4.2f + centerPrior * 0.62f +
+                    landmarkBonus * 0.28f + contourBonus * 0.62f
             } else {
-                val candidate = mouthRegion(face, imageWidth, imageHeight)
+                val candidate = approximateMouthRegion(face, imageWidth, imageHeight)
                 val centerDistance = abs(candidate.centerX - previousRegion.centerX) +
                     abs(candidate.centerY - previousRegion.centerY)
                 val continuity = (1f - centerDistance / 0.42f).coerceIn(0f, 1f)
@@ -330,8 +393,8 @@ class FaceTrackAnalyzer {
                     min(candidate.width, previousRegion.width) /
                         max(candidate.width, previousRegion.width).coerceAtLeast(0.001f)
                     ).coerceIn(0f, 1f)
-                continuity * 2.4f + widthContinuity * 0.82f +
-                    area * 1.6f + centerPrior * 0.20f + landmarkBonus * 0.28f
+                continuity * 2.4f + widthContinuity * 0.82f + area * 1.6f +
+                    centerPrior * 0.18f + landmarkBonus * 0.18f + contourBonus * 0.52f
             }
         }
     }
@@ -348,36 +411,45 @@ class FaceTrackAnalyzer {
         )
     }
 
-    private fun mouthRegion(face: Face, width: Int, height: Int): MouthRegion {
+    /** Estimation rapide utilisée uniquement pour choisir le bon visage. */
+    private fun approximateMouthRegion(face: Face, width: Int, height: Int): MouthRegion {
+        val contours = lipContourPoints(face)
+        if (contours.size >= 12) {
+            val minX = contours.minOf { it.x }
+            val maxX = contours.maxOf { it.x }
+            val minY = contours.minOf { it.y }
+            val maxY = contours.maxOf { it.y }
+            return MouthRegion(
+                centerX = ((minX + maxX) * 0.5f / width).coerceIn(0.05f, 0.95f),
+                centerY = (1f - (minY + maxY) * 0.5f / height).coerceIn(0.05f, 0.95f),
+                width = ((maxX - minX) * 1.34f / width).coerceIn(0.045f, 0.30f),
+                height = ((maxY - minY) * 1.70f / height).coerceIn(0.022f, 0.18f)
+            )
+        }
+
         val left = face.getLandmark(FaceLandmark.MOUTH_LEFT)?.position
         val right = face.getLandmark(FaceLandmark.MOUTH_RIGHT)?.position
         val bottom = face.getLandmark(FaceLandmark.MOUTH_BOTTOM)?.position
-
         val fallbackCenter = PointF(
             face.boundingBox.centerX().toFloat(),
             face.boundingBox.top + face.boundingBox.height() * 0.72f
         )
-
         val centerX = if (left != null && right != null) {
             (left.x + right.x) / 2f
         } else fallbackCenter.x
-
         val centerY = if (left != null && right != null && bottom != null) {
             ((left.y + right.y) / 2f + bottom.y) / 2f
         } else fallbackCenter.y
-
         val mouthWidthPx = if (left != null && right != null) {
             max(24f, right.x - left.x)
         } else {
             face.boundingBox.width() * 0.38f
         }
-
         val mouthHeightPx = if (bottom != null && left != null && right != null) {
             max(14f, (bottom.y - min(left.y, right.y)) * 2.2f)
         } else {
             face.boundingBox.height() * 0.16f
         }
-
         return MouthRegion(
             centerX = (centerX / width).coerceIn(0.05f, 0.95f),
             centerY = (1f - centerY / height).coerceIn(0.05f, 0.95f),
@@ -399,8 +471,6 @@ class FaceTrackAnalyzer {
         val expandedWidth = box.width() * FACE_WIDTH_SCALE
         val expandedHeight = box.height() * FACE_HEIGHT_SCALE
         val centerX = box.centerX().toFloat()
-        // Un léger décalage vers le menton fournit au générateur le contexte
-        // inférieur recommandé par Wav2Lip sans englober inutilement le cou.
         val centerY = box.centerY() + box.height() * FACE_CENTER_Y_SHIFT
 
         return FaceRegion(
@@ -446,11 +516,17 @@ class FaceTrackAnalyzer {
     }
 
     private companion object {
+        val LIP_CONTOURS = listOf(
+            FaceContour.UPPER_LIP_TOP,
+            FaceContour.UPPER_LIP_BOTTOM,
+            FaceContour.LOWER_LIP_TOP,
+            FaceContour.LOWER_LIP_BOTTOM
+        )
         const val DETECTION_MAX_DIMENSION = 1_080
-        const val MIN_TRACK_INTERVAL_US = 200_000L
-        const val MAX_TRACK_SAMPLES = 360
-        const val MAX_CENTER_JUMP = 0.24f
-        const val MAX_SIZE_RATIO = 2.25f
+        const val MIN_TRACK_INTERVAL_US = 100_000L
+        const val MAX_TRACK_SAMPLES = 720
+        const val MAX_CENTER_JUMP = 0.20f
+        const val MAX_SIZE_RATIO = 1.95f
         const val MAX_FACE_CENTER_JUMP = 0.28f
         const val MAX_FACE_SIZE_RATIO = 1.85f
         const val FACE_WIDTH_SCALE = 1.00f
