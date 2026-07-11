@@ -17,6 +17,11 @@ internal data class RenderGeometry(
     val viewportHeight: Int
 )
 
+internal data class DisplayedDimensions(
+    val width: Int,
+    val height: Int
+)
+
 internal fun renderGeometry(
     encodedWidth: Int,
     encodedHeight: Int,
@@ -25,17 +30,14 @@ internal fun renderGeometry(
 ): RenderGeometry {
     require(encodedWidth > 0 && encodedHeight > 0) { "Dimensions vidéo invalides" }
 
-    val rotation = ((rotationDegrees % 360) + 360) % 360
-    val normalizedRotation = if (rotation in setOf(0, 90, 180, 270)) rotation else 0
-    val swapDimensions = normalizedRotation == 90 || normalizedRotation == 270
-    val displayWidth = if (swapDimensions) encodedHeight else encodedWidth
-    val displayHeight = if (swapDimensions) encodedWidth else encodedHeight
+    val rotation = normalizeRotation(rotationDegrees)
+    val displayed = displayedDimensions(encodedWidth, encodedHeight, rotation)
     val outputWidth = aspectRatio.outputWidth
     val outputHeight = aspectRatio.outputHeight
 
     val scale = min(
-        outputWidth.toFloat() / displayWidth.toFloat(),
-        outputHeight.toFloat() / displayHeight.toFloat()
+        outputWidth.toFloat() / displayed.width.toFloat(),
+        outputHeight.toFloat() / displayed.height.toFloat()
     )
 
     fun even(value: Int): Int {
@@ -43,17 +45,17 @@ internal fun renderGeometry(
         return if (safe % 2 == 0) safe else safe - 1
     }
 
-    val viewportWidth = even((displayWidth * scale).roundToInt()).coerceAtMost(outputWidth)
-    val viewportHeight = even((displayHeight * scale).roundToInt()).coerceAtMost(outputHeight)
+    val viewportWidth = even((displayed.width * scale).roundToInt()).coerceAtMost(outputWidth)
+    val viewportHeight = even((displayed.height * scale).roundToInt()).coerceAtMost(outputHeight)
     val viewportX = (outputWidth - viewportWidth) / 2
     val viewportY = (outputHeight - viewportHeight) / 2
 
     return RenderGeometry(
         encodedWidth = encodedWidth,
         encodedHeight = encodedHeight,
-        displayWidth = displayWidth,
-        displayHeight = displayHeight,
-        rotationDegrees = normalizedRotation,
+        displayWidth = displayed.width,
+        displayHeight = displayed.height,
+        rotationDegrees = rotation,
         outputWidth = outputWidth,
         outputHeight = outputHeight,
         viewportX = viewportX,
@@ -61,4 +63,41 @@ internal fun renderGeometry(
         viewportWidth = viewportWidth,
         viewportHeight = viewportHeight
     )
+}
+
+/**
+ * Le rendu a déjà appliqué la rotation de la vidéo source aux pixels.
+ * L'assemblage final ne doit donc jamais recopier cette ancienne rotation.
+ * On choisit uniquement l'orientation nécessaire pour que les dimensions encodées
+ * soient affichées dans le format demandé, même sur un encodeur Android qui inverse
+ * largeur et hauteur.
+ */
+internal fun finalOrientationHint(
+    encodedWidth: Int,
+    encodedHeight: Int,
+    aspectRatio: OutputAspectRatio
+): Int {
+    require(encodedWidth > 0 && encodedHeight > 0) { "Dimensions vidéo finales invalides" }
+    val encodedIsPortrait = encodedHeight > encodedWidth
+    val requestedIsPortrait = aspectRatio == OutputAspectRatio.PORTRAIT_9_16
+    return if (encodedIsPortrait == requestedIsPortrait) 0 else 90
+}
+
+internal fun displayedDimensions(
+    encodedWidth: Int,
+    encodedHeight: Int,
+    rotationDegrees: Int
+): DisplayedDimensions {
+    val rotation = normalizeRotation(rotationDegrees)
+    val swapsDimensions = rotation == 90 || rotation == 270
+    return if (swapsDimensions) {
+        DisplayedDimensions(encodedHeight, encodedWidth)
+    } else {
+        DisplayedDimensions(encodedWidth, encodedHeight)
+    }
+}
+
+private fun normalizeRotation(rotationDegrees: Int): Int {
+    val rotation = ((rotationDegrees % 360) + 360) % 360
+    return if (rotation in setOf(0, 90, 180, 270)) rotation else 0
 }
