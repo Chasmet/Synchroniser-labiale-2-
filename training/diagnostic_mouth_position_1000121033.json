@@ -1,0 +1,18 @@
+{
+  "source_file": "1000121033.mp4",
+  "duration_seconds": 6.954667,
+  "width": 720,
+  "height": 1280,
+  "frame_rate": 30,
+  "audio_present": true,
+  "observed_problem": "la variation générative est concentrée sur le front et le haut du visage alors que les lèvres restent presque fixes",
+  "root_cause": "mélange de deux repères OpenGL : coordonnées logiques du visage et coordonnées transformées par SurfaceTexture",
+  "fix": [
+    "conserver visage et bouche dans le repère logique de la trame",
+    "appliquer SurfaceTexture uniquement lors de l'échantillonnage de la vidéo",
+    "centrer le masque génératif sur la bouche détectée",
+    "supprimer les masques fondés sur une hauteur fixe du visage",
+    "rejeter toute fusion si la bouche sort du cadre du visage"
+  ],
+  "private_media_embedded": false
+}
