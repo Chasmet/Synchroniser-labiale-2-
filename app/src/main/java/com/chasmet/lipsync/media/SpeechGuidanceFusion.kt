@@ -86,5 +86,5 @@ internal object SpeechGuidanceFusion {
     }
 
     private const val MAX_ALIGNED_GUIDANCE = 0.88f
-    private const val MAX_FALLBACK_GUIDANCE = 0.58f
+    private const val MAX_FALLBACK_GUIDANCE = 0.64f
 }
