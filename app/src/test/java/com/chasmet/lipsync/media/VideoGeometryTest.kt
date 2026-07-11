@@ -5,40 +5,82 @@ import org.junit.Test
 
 class VideoGeometryTest {
     @Test
-    fun verticalWithoutRotationStaysVertical() {
-        val geometry = renderGeometry(1080, 1920, 0)
-        assertEquals(1080, geometry.outputWidth)
-        assertEquals(1920, geometry.outputHeight)
+    fun portraitChoiceAlwaysCreatesNineBySixteen() {
+        val geometry = renderGeometry(
+            encodedWidth = 1080,
+            encodedHeight = 1920,
+            rotationDegrees = 0,
+            aspectRatio = OutputAspectRatio.PORTRAIT_9_16
+        )
+
+        assertEquals(720, geometry.outputWidth)
+        assertEquals(1280, geometry.outputHeight)
+        assertEquals(720, geometry.viewportWidth)
+        assertEquals(1280, geometry.viewportHeight)
     }
 
     @Test
-    fun horizontalWithoutRotationStaysHorizontal() {
-        val geometry = renderGeometry(1920, 1080, 0)
-        assertEquals(1920, geometry.outputWidth)
-        assertEquals(1080, geometry.outputHeight)
+    fun landscapeChoiceAlwaysCreatesSixteenByNine() {
+        val geometry = renderGeometry(
+            encodedWidth = 1920,
+            encodedHeight = 1080,
+            rotationDegrees = 0,
+            aspectRatio = OutputAspectRatio.LANDSCAPE_16_9
+        )
+
+        assertEquals(1280, geometry.outputWidth)
+        assertEquals(720, geometry.outputHeight)
+        assertEquals(1280, geometry.viewportWidth)
+        assertEquals(720, geometry.viewportHeight)
     }
 
     @Test
-    fun metadataRotationNinetySwapsDimensions() {
-        val geometry = renderGeometry(1920, 1080, 90)
-        assertEquals(1080, geometry.outputWidth)
-        assertEquals(1920, geometry.outputHeight)
+    fun portraitSourceInLandscapeIsCenteredWithoutStretching() {
+        val geometry = renderGeometry(
+            encodedWidth = 1080,
+            encodedHeight = 1920,
+            rotationDegrees = 0,
+            aspectRatio = OutputAspectRatio.LANDSCAPE_16_9
+        )
+
+        assertEquals(1280, geometry.outputWidth)
+        assertEquals(720, geometry.outputHeight)
+        assertEquals(404, geometry.viewportWidth)
+        assertEquals(720, geometry.viewportHeight)
+        assertEquals(438, geometry.viewportX)
+        assertEquals(0, geometry.viewportY)
+    }
+
+    @Test
+    fun landscapeSourceInPortraitIsCenteredWithoutStretching() {
+        val geometry = renderGeometry(
+            encodedWidth = 1920,
+            encodedHeight = 1080,
+            rotationDegrees = 0,
+            aspectRatio = OutputAspectRatio.PORTRAIT_9_16
+        )
+
+        assertEquals(720, geometry.outputWidth)
+        assertEquals(1280, geometry.outputHeight)
+        assertEquals(720, geometry.viewportWidth)
+        assertEquals(404, geometry.viewportHeight)
+        assertEquals(0, geometry.viewportX)
+        assertEquals(438, geometry.viewportY)
+    }
+
+    @Test
+    fun metadataRotationNinetyIsAppliedBeforeRatioCalculation() {
+        val geometry = renderGeometry(
+            encodedWidth = 1920,
+            encodedHeight = 1080,
+            rotationDegrees = 90,
+            aspectRatio = OutputAspectRatio.PORTRAIT_9_16
+        )
+
+        assertEquals(1080, geometry.displayWidth)
+        assertEquals(1920, geometry.displayHeight)
         assertEquals(90, geometry.rotationDegrees)
-    }
-
-    @Test
-    fun metadataRotationTwoSeventySwapsDimensions() {
-        val geometry = renderGeometry(1920, 1080, 270)
-        assertEquals(1080, geometry.outputWidth)
-        assertEquals(1920, geometry.outputHeight)
-        assertEquals(270, geometry.rotationDegrees)
-    }
-
-    @Test
-    fun rotationOneEightyKeepsDimensions() {
-        val geometry = renderGeometry(1080, 1920, 180)
-        assertEquals(1080, geometry.outputWidth)
-        assertEquals(1920, geometry.outputHeight)
-        assertEquals(180, geometry.rotationDegrees)
+        assertEquals(720, geometry.viewportWidth)
+        assertEquals(1280, geometry.viewportHeight)
     }
 }
