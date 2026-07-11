@@ -40,6 +40,9 @@ class Mp4Assembler {
                 aspectRatio = outputAspectRatio
             )
 
+            /* Supprime toute ancienne rotation transportée par le format intermédiaire. */
+            videoFormat.setInteger(MediaFormat.KEY_ROTATION, 0)
+
             muxer = MediaMuxer(
                 outputMp4.absolutePath,
                 MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
