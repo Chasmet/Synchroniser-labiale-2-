@@ -2,7 +2,7 @@
 
 Application Android locale de synchronisation labiale. Elle associe une vidéo contenant un visage à un MP3, recrée la zone labiale avec un réseau audio-visuel et exporte le résultat dans la galerie sans envoyer les fichiers sur Internet.
 
-## Version 0.7.0 générative
+## Version 0.7.1 synchronisation corrigée
 
 - véritable génération neuronale Wav2Lip 256 × 256 image par image ;
 - spectrogramme compatible avec l’entraînement Wav2Lip : 16 kHz, STFT 800/200 et 80 bandes Mel ;
@@ -10,7 +10,10 @@ Application Android locale de synchronisation labiale. Elle associe une vidéo c
 - suivi verrouillé du même visage et interpolation temporelle des cadres ;
 - masque progressif conservant les yeux, les cheveux, le contour du visage et les occlusions ;
 - correction colorimétrique et stabilisation temporelle adaptative ;
-- retour automatique au moteur Pro v4 si une image est incertaine ou si le modèle ne tient pas en mémoire ;
+- résultat utilisateur analysé : retard visuel estimé à environ 567 ms ;
+- compensation de 560 ms appliquée au moteur Pro v4 de secours ;
+- attaque labiale plus rapide, fermeture renforcée et réduction des lèvres trop arrondies ;
+- Wav2Lip conserve son alignement Mel propre et reste prioritaire ;
 - choix obligatoire entre **9:16 vertical** et **16:9 horizontal** ;
 - sortie contrôlée en 720 × 1280 ou 1280 × 720 sans rotation MP4 supplémentaire ;
 - réseau personnel réentraîné après examen de 28 vidéos et 6 950 exemples audio–bouche ;
@@ -23,7 +26,7 @@ Application Android locale de synchronisation labiale. Elle associe une vidéo c
 - détection et suivi local du visage avec ML Kit ;
 - génération Wav2Lip 256 avec ONNX Runtime Android ;
 - rendu OpenGL avec fusion multi-masque du visage généré ;
-- moteur neuronal personnel Pro v4 conservé comme secours ;
+- moteur neuronal personnel Pro v4 recalibré comme secours ;
 - progression par blocs de 30 secondes ;
 - export dans `Movies/LipSync AI` ;
 - aucun serveur et aucune API distante.
@@ -37,13 +40,13 @@ Application Android locale de synchronisation labiale. Elle associe une vidéo c
 
 ## Performances et compatibilité
 
-Le modèle de 205 Mio est inclus dans l’APK et fonctionne sans connexion. Le traitement est volontairement hors ligne : selon la puissance du téléphone, une seconde de vidéo peut demander plusieurs secondes de calcul. Si NNAPI n’accepte pas une partie du graphe, ONNX Runtime la traite avec XNNPACK ou le CPU. Si le moteur génératif échoue, l’export continue avec Pro v4 au lieu de perdre la vidéo.
+Le modèle de 205 Mio est inclus dans l’APK et fonctionne sans connexion. Le traitement est volontairement hors ligne : selon la puissance du téléphone, une seconde de vidéo peut demander plusieurs secondes de calcul. Si NNAPI n’accepte pas une partie du graphe, ONNX Runtime la traite avec XNNPACK ou le CPU. Si le moteur génératif échoue, l’export continue avec Pro v4 recalibré au lieu de perdre la vidéo.
 
-## Entraînement et construction
+## Entraînement, calibration et construction
 
-Le pipeline reproductible du modèle personnel se trouve dans `tools/train_personal_lip_model.py`. Les vidéos privées ne sont pas publiées : seuls les poids quantifiés et un rapport sans image sont conservés. Elles servent également à calibrer le suivi, le cadrage et la fusion du moteur génératif. Le générateur généraliste n’est pas réentraîné sur quelques minutes d’un seul visage, ce qui réduirait sa capacité à fonctionner avec d’autres personnes.
+Le pipeline reproductible du modèle personnel se trouve dans `tools/train_personal_lip_model.py`. Les vidéos privées ne sont pas publiées : seuls les poids quantifiés et des rapports sans image sont conservés. Le diagnostic de synchronisation est documenté dans `training/diagnostic_audio_sync_1000121007.json` sans inclure la vidéo source.
 
-GitHub Actions télécharge le graphe ONNX public, vérifie strictement son SHA-256, valide les modèles, exécute les tests et Android Lint, puis compile et publie l’APK signé.
+GitHub Actions télécharge le graphe ONNX public, vérifie strictement son SHA-256, valide les modèles et la calibration, exécute les tests et Android Lint, puis compile et publie l’APK signé.
 
 ## Conditions du modèle
 
