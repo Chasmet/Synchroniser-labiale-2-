@@ -74,19 +74,37 @@ internal class OfflineFrenchSpeechRecognizer(
         val averageConfidence = if (uniqueWords.isEmpty()) 0f else {
             uniqueWords.map { it.confidence }.average().toFloat().coerceIn(0f, 1f)
         }
-        val accepted = uniqueWords.isNotEmpty() && averageConfidence >= MIN_AVERAGE_CONFIDENCE
-        val cues = if (accepted) FrenchVisemeMapper.build(uniqueWords) else emptyList()
+        val wordsAccepted = uniqueWords.isNotEmpty() &&
+            averageConfidence >= MIN_AVERAGE_CONFIDENCE
+
+        val proportionalCues = if (wordsAccepted) {
+            FrenchVisemeMapper.build(uniqueWords)
+        } else emptyList()
+        val aligned = if (wordsAccepted) {
+            AcousticPhonemeAligner.align(samples16Khz, uniqueWords)
+        } else {
+            PhonemeAlignmentResult(emptyList(), 0f)
+        }
+        val useAlignment = aligned.cues.isNotEmpty() &&
+            aligned.confidence >= MIN_ALIGNMENT_CONFIDENCE
+        val cues = if (useAlignment) aligned.cues else proportionalCues
+        val accepted = wordsAccepted && cues.isNotEmpty()
+
         return SpeechGuidance(
             transcript = uniqueWords.joinToString(" ") { it.text },
             words = uniqueWords,
             cues = cues,
             averageConfidence = averageConfidence,
-            accepted = accepted && cues.isNotEmpty(),
-            engine = if (accepted && cues.isNotEmpty()) {
-                "Vosk français hors ligne"
-            } else {
-                "Transcription rejetée : confiance insuffisante"
-            }
+            accepted = accepted,
+            engine = when {
+                accepted && useAlignment -> "Vosk + alignement phonétique français"
+                accepted -> "Vosk + minutage phonétique proportionnel"
+                else -> "Transcription rejetée : confiance insuffisante"
+            },
+            alignmentConfidence = if (useAlignment) aligned.confidence else {
+                averageConfidence * FALLBACK_ALIGNMENT_FACTOR
+            },
+            alignedPhonemeCount = cues.size
         )
     }
 
@@ -127,5 +145,7 @@ internal class OfflineFrenchSpeechRecognizer(
         const val CHUNK_SAMPLES = 1_600
         const val MIN_SPEECH_COVERAGE = 0.015f
         const val MIN_AVERAGE_CONFIDENCE = 0.48f
+        const val MIN_ALIGNMENT_CONFIDENCE = 0.30f
+        const val FALLBACK_ALIGNMENT_FACTOR = 0.55f
     }
 }
