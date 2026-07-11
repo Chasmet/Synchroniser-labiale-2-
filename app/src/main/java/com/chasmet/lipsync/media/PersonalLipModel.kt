@@ -1,6 +1,7 @@
 package com.chasmet.lipsync.media
 
 import android.content.Context
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ln
@@ -14,7 +15,7 @@ internal data class AudioFeatureFrame(
 )
 
 /**
- * Petit réseau neuronal entraîné sur les vidéos fournies par l'utilisateur.
+ * Réseau neuronal personnel entraîné sur les vidéos fournies par l'utilisateur.
  * Les vidéos sources ne sont jamais intégrées à l'APK : seuls les poids appris le sont.
  */
 internal class PersonalLipModel private constructor(
@@ -91,15 +92,23 @@ internal class PersonalLipModel private constructor(
             val layers = buildList {
                 for (layerIndex in 0 until layersJson.length()) {
                     val layerJson = layersJson.getJSONObject(layerIndex)
-                    val weightsJson = layerJson.getJSONArray("weights")
-                    val weights = Array(weightsJson.length()) { row ->
-                        weightsJson.getJSONArray(row).toFloatArray()
+                    val weights = if (layerJson.has("weights_q8_base64")) {
+                        decodeQuantizedWeights(layerJson)
+                    } else {
+                        val weightsJson = layerJson.getJSONArray("weights")
+                        Array(weightsJson.length()) { row ->
+                            weightsJson.getJSONArray(row).toFloatArray()
+                        }
+                    }
+                    val bias = layerJson.getJSONArray("bias").toFloatArray()
+                    require(weights.isNotEmpty() && weights[0].size == bias.size) {
+                        "Couche neuronale invalide"
                     }
                     add(
                         Layer(
                             activation = layerJson.getString("activation"),
                             weights = weights,
-                            bias = layerJson.getJSONArray("bias").toFloatArray()
+                            bias = bias
                         )
                     )
                 }
@@ -119,6 +128,25 @@ internal class PersonalLipModel private constructor(
                     .coerceIn(0f, 1f),
                 name = root.optString("name", "Modèle personnel")
             )
+        }
+
+        private fun decodeQuantizedWeights(layerJson: JSONObject): Array<FloatArray> {
+            val rows = layerJson.getInt("rows")
+            val columns = layerJson.getInt("cols")
+            val scale = layerJson.getDouble("weight_scale").toFloat()
+            require(rows > 0 && columns > 0 && scale > 0f) { "Poids quantifiés invalides" }
+
+            val bytes = Base64.decode(
+                layerJson.getString("weights_q8_base64"),
+                Base64.DEFAULT
+            )
+            require(bytes.size == rows * columns) { "Taille des poids quantifiés invalide" }
+
+            return Array(rows) { row ->
+                FloatArray(columns) { column ->
+                    bytes[row * columns + column].toInt() * scale
+                }
+            }
         }
 
         private fun JSONArray.toFloatArray(): FloatArray {
