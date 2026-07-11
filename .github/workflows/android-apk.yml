@@ -20,12 +20,35 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
+      - name: Restaurer le modèle génératif en cache
+        id: cache-wav2lip
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/wav2lip_256.onnx
+          key: wav2lip-256-bfeb0ab1-v1
+
+      - name: Télécharger et authentifier Wav2Lip 256
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="app/src/main/assets/wav2lip_256.onnx"
+          url="https://github.com/instant-high/wav2lip-onnx-256/releases/download/v1.0.0/wav2lip_256.onnx"
+          expected="bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
+          if [ ! -f "$model" ]; then
+            curl --fail --location --retry 4 --retry-all-errors \
+              --output "$model.part" "$url"
+            mv "$model.part" "$model"
+          fi
+          echo "$expected  $model" | sha256sum --check --strict
+          test "$(stat --format=%s "$model")" -eq 214402122
+
       - name: Vérifier les modèles personnels
         run: |
           python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
           python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v4.json >/dev/null
           python - <<'PY'
           import base64
+          import hashlib
           import json
           from pathlib import Path
 
@@ -48,13 +71,18 @@ jobs:
           training = profile["training"]
           inference = profile["inference"]
           assert training["videos_examined"] >= 28
-          assert training["samples_total"] >= 6800
+          assert training["samples_total"] >= 6950
           assert 0 <= inference["look_ahead_frames"] <= 5
           assert 0 < inference["attack_factor"] < 1
           assert 0 < inference["release_factor"] < 1
           assert 0 <= inference["closure_strength"] <= 1
+
+          wav2lip = Path("app/src/main/assets/wav2lip_256.onnx")
+          assert wav2lip.stat().st_size == 214_402_122
+          digest = hashlib.sha256(wav2lip.read_bytes()).hexdigest()
+          assert digest == "bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
           print(
-              f"Modèles validés : {model['name']} + {profile['name']} - "
+              f"Modèles validés : Wav2Lip 256 + {model['name']} + {profile['name']} - "
               f"{training['samples_total']} exemples cumulés"
           )
           PY
@@ -101,13 +129,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.6.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.7.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.6.0
-          path: LipSync-AI-Studio-v0.6.0.apk
+          name: LipSync-AI-Studio-v0.7.0
+          path: LipSync-AI-Studio-v0.7.0.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -115,11 +143,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.6.0 >/dev/null 2>&1; then
-            gh release upload v0.6.0 LipSync-AI-Studio-v0.6.0.apk --clobber
+          if gh release view v0.7.0 >/dev/null 2>&1; then
+            gh release upload v0.7.0 LipSync-AI-Studio-v0.7.0.apk --clobber
           else
-            gh release create v0.6.0 LipSync-AI-Studio-v0.6.0.apk \
+            gh release create v0.7.0 LipSync-AI-Studio-v0.7.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.6.0 Pro" \
-              --notes "Moteur Pro v4 créé après analyse de la sortie réelle : suppression de la cavité noire et des fausses dents, fermeture naturelle des lèvres, verrouillage du visage, suivi deux fois plus précis, analyse spectrale enrichie et influence adaptative du réseau pour éviter les ouvertures retardées."
+              --title "LipSync AI Studio v0.7.0 Génératif" \
+              --notes "Nouveau moteur génératif local Wav2Lip 256 : recréation neuronale de la zone labiale image par image, spectrogramme Mel 80 bandes, accélération NNAPI/XNNPACK, fusion douce multi-masque, lissage temporel, suivi du même visage et repli automatique Pro v4. Les ratios restent strictement 720x1280 en 9:16 et 1280x720 en 16:9. Usage personnel/recherche conformément aux conditions du modèle Wav2Lip."
           fi

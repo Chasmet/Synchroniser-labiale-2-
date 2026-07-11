@@ -3,10 +3,10 @@
   "version": 4,
   "training": {
     "videos_examined": 28,
-    "videos_used": 20,
+    "videos_used": 21,
     "source_duration_seconds": 590.171,
-    "labeled_duration_seconds": 274.76,
-    "samples_total": 6869,
+    "labeled_duration_seconds": 278.0,
+    "samples_total": 6950,
     "diagnostic_outputs_analyzed": 1,
     "source_files_embedded": false
   },

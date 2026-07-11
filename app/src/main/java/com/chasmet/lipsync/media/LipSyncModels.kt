@@ -52,6 +52,92 @@ data class MouthKeyframe(
 )
 
 /**
+ * Rectangle du visage suivi, exprimé dans les coordonnées normalisées de la
+ * trame décodée (origine en bas à gauche). Le moteur génératif utilise toute
+ * cette zone comme contexte et ne remplace ensuite que la partie labiale.
+ */
+data class FaceRegion(
+    val centerX: Float,
+    val centerY: Float,
+    val width: Float,
+    val height: Float
+) {
+    fun interpolate(other: FaceRegion, amount: Float): FaceRegion {
+        val t = amount.coerceIn(0f, 1f)
+        fun mix(start: Float, end: Float): Float = start + (end - start) * t
+        return FaceRegion(
+            centerX = mix(centerX, other.centerX),
+            centerY = mix(centerY, other.centerY),
+            width = mix(width, other.width),
+            height = mix(height, other.height)
+        )
+    }
+
+    companion object {
+        val DEFAULT = FaceRegion(
+            centerX = 0.5f,
+            centerY = 0.48f,
+            width = 0.42f,
+            height = 0.54f
+        )
+    }
+}
+
+data class FaceKeyframe(
+    val timeUs: Long,
+    val region: FaceRegion,
+    val confidence: Float = 1f
+)
+
+data class FaceTrack(
+    val keyframes: List<FaceKeyframe>,
+    val fallback: FaceRegion
+) {
+    init {
+        require(keyframes.zipWithNext().all { (first, second) ->
+            first.timeUs <= second.timeUs
+        }) { "Les repères de visage doivent être triés" }
+    }
+
+    fun regionAt(timeUs: Long): FaceRegion {
+        if (keyframes.isEmpty()) return fallback
+        if (timeUs <= keyframes.first().timeUs) return keyframes.first().region
+        if (timeUs >= keyframes.last().timeUs) return keyframes.last().region
+
+        var low = 0
+        var high = keyframes.lastIndex
+        while (low <= high) {
+            val middle = (low + high) ushr 1
+            when {
+                keyframes[middle].timeUs < timeUs -> low = middle + 1
+                keyframes[middle].timeUs > timeUs -> high = middle - 1
+                else -> return keyframes[middle].region
+            }
+        }
+
+        val before = keyframes[high.coerceIn(0, keyframes.lastIndex)]
+        val after = keyframes[low.coerceIn(0, keyframes.lastIndex)]
+        val span = (after.timeUs - before.timeUs).coerceAtLeast(1L)
+        val amount = (timeUs - before.timeUs).toFloat() / span.toFloat()
+        return before.region.interpolate(after.region, amount)
+    }
+
+    fun confidenceAt(timeUs: Long): Float {
+        if (keyframes.isEmpty()) return 0f
+        val nearest = keyframes.minByOrNull { kotlin.math.abs(it.timeUs - timeUs) }
+        return nearest?.confidence?.coerceIn(0f, 1f) ?: 0f
+    }
+}
+
+data class FaceAnalysis(
+    val mouthTrack: MouthTrack,
+    val faceTrack: FaceTrack
+) {
+    val detectionCount: Int
+        get() = minOf(mouthTrack.detectionCount, faceTrack.keyframes.size)
+}
+
+/**
  * Position de la bouche suivie dans toute la vidéo.
  * Les images intermédiaires sont interpolées pour éviter les sauts visibles.
  */
@@ -125,6 +211,38 @@ internal fun MouthRegion.displayToEncoded(rotationDegrees: Int): MouthRegion {
         centerY = converted.centerY.coerceIn(0.02f, 0.98f),
         width = converted.width.coerceIn(0.035f, 0.48f),
         height = converted.height.coerceIn(0.025f, 0.32f)
+    )
+}
+
+internal fun FaceRegion.displayToEncoded(rotationDegrees: Int): FaceRegion {
+    val normalizedRotation = ((rotationDegrees % 360) + 360) % 360
+    val converted = when (normalizedRotation) {
+        90 -> FaceRegion(
+            centerX = 1f - centerY,
+            centerY = centerX,
+            width = height,
+            height = width
+        )
+        180 -> FaceRegion(
+            centerX = 1f - centerX,
+            centerY = 1f - centerY,
+            width = width,
+            height = height
+        )
+        270 -> FaceRegion(
+            centerX = centerY,
+            centerY = 1f - centerX,
+            width = height,
+            height = width
+        )
+        else -> this
+    }
+
+    return converted.copy(
+        centerX = converted.centerX.coerceIn(0.01f, 0.99f),
+        centerY = converted.centerY.coerceIn(0.01f, 0.99f),
+        width = converted.width.coerceIn(0.12f, 0.96f),
+        height = converted.height.coerceIn(0.15f, 0.98f)
     )
 }
 

@@ -4,36 +4,36 @@
   "source_files_embedded": false,
   "summary": {
     "videos_seen": 29,
-    "videos_used": 20,
-    "videos_rejected": 9,
-    "samples": 6869,
+    "videos_used": 21,
+    "videos_rejected": 8,
+    "samples": 6950,
     "source_duration_seconds": 598.204,
-    "labeled_duration_seconds": 274.76,
+    "labeled_duration_seconds": 278.0,
     "source_files_embedded": false,
     "hidden_layers": [
       96,
       48
     ],
-    "validation_videos": 4,
+    "validation_videos": 5,
     "validation_mae": [
-      0.154276,
-      0.078034,
-      0.091921
+      0.145131,
+      0.065674,
+      0.075517
     ],
     "validation_r2": [
-      0.040739,
-      0.503001,
-      0.274765
+      0.050167,
+      0.492132,
+      0.490888
     ],
     "validation_visual_mae": [
-      0.30578,
-      0.205201,
-      0.292192
+      0.307928,
+      0.202111,
+      0.304229
     ],
     "validation_visual_r2": [
-      -0.089489,
-      -0.09245,
-      -0.273906
+      -0.110303,
+      -0.089077,
+      -0.593552
     ],
     "seed": 20260711,
     "teacher_model": "CHK-Personal-LipMotion-v2",
@@ -116,13 +116,17 @@
     },
     {
       "file": "1000101855.mp4",
+      "sha256_12": "66e6af1bdcfe",
       "duration_seconds": 9.8,
       "source_width": 704,
       "source_height": 1280,
       "source_rotation": 0,
-      "accepted": false,
-      "samples": 0,
-      "reason": "animal : aucune bouche humaine à apprendre"
+      "frames_examined": 243,
+      "faces_detected": 81,
+      "accepted": true,
+      "samples": 81,
+      "labeled_seconds": 3.24,
+      "mouth_movement": 0.190219
     },
     {
       "file": "1000102739.mp4",

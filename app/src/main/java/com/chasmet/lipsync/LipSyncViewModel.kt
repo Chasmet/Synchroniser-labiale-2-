@@ -14,6 +14,7 @@ import com.chasmet.lipsync.media.ProcessingStage
 import com.chasmet.lipsync.media.ProcessingStatus
 import com.chasmet.lipsync.media.SelectedMedia
 import com.chasmet.lipsync.media.VideoLipSyncProcessor
+import com.chasmet.lipsync.media.Wav2LipMelAnalyzer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,21 +103,29 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             )
                         )
                     }
-                    val mouthTrack = FaceTrackAnalyzer().analyze(videoFile)
+                    val faceAnalysis = FaceTrackAnalyzer().analyze(videoFile)
 
                     val startUs = (current.audioStartSeconds * 1_000_000L).toLong()
+                    val videoDurationUs = video.durationMs * 1_000L
                     _uiState.update {
                         it.copy(
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_ANALYSIS,
                                 0.16f,
-                                "Analyse fréquentielle adaptative Pro v4"
+                                "Spectrogramme Mel 80 bandes pour le réseau génératif"
                             )
                         )
                     }
                     val timeline = AudioVisemeAnalyzer(context).analyze(audioFile, startUs)
-                    val videoDurationUs = video.durationMs * 1_000L
-                    val usableDurationUs = min(videoDurationUs, timeline.durationUs)
+                    val melTimeline = Wav2LipMelAnalyzer().analyze(
+                        audioFile = audioFile,
+                        startUs = startUs,
+                        maxDurationUs = videoDurationUs
+                    )
+                    val usableDurationUs = min(
+                        min(videoDurationUs, timeline.durationUs),
+                        melTimeline.durationUs
+                    )
                         .coerceAtLeast(100_000L)
                     val totalBlocks = ceil(usableDurationUs / 30_000_000.0)
                         .toInt()
@@ -129,17 +138,19 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.VIDEO_RENDER,
                                 0.20f,
-                                "${mouthTrack.detectionCount} repères • bloc 1 sur $totalBlocks",
+                                "${faceAnalysis.detectionCount} repères • Wav2Lip 256 • bloc 1 sur $totalBlocks",
                                 1,
                                 totalBlocks
                             )
                         )
                     }
-                    VideoLipSyncProcessor().process(
+                    val renderReport = VideoLipSyncProcessor().process(
+                        context = context,
                         inputVideo = videoFile,
                         outputVideoOnly = videoOnly,
                         timeline = timeline,
-                        mouthTrack = mouthTrack,
+                        melTimeline = melTimeline,
+                        faceAnalysis = faceAnalysis,
                         outputAspectRatio = outputAspectRatio
                     ) { localProgress, block, blocks ->
                         val globalProgress = 0.20f + localProgress * 0.58f
@@ -148,7 +159,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                                 status = ProcessingStatus(
                                     ProcessingStage.VIDEO_RENDER,
                                     globalProgress,
-                                    "Suivi dynamique • bloc $block sur $blocks",
+                                    "Génération labiale image par image • bloc $block sur $blocks",
                                     block,
                                     blocks
                                 )
@@ -159,9 +170,9 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update {
                         it.copy(
                             status = ProcessingStatus(
-                                ProcessingStage.AUDIO_TRANSCODE,
-                                0.81f,
-                                "Conversion locale du MP3"
+                            ProcessingStage.AUDIO_TRANSCODE,
+                            0.81f,
+                            "Audio final • ${renderReport.generatedFrames} images générées"
                             )
                         )
                     }
@@ -212,7 +223,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.DONE,
                             1f,
-                            "Vidéo ${outputAspectRatio.label} enregistrée avec le moteur Pro v4"
+                            "Vidéo ${outputAspectRatio.label} enregistrée avec le moteur génératif v5"
                         )
                     )
                 }

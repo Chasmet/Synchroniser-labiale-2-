@@ -41,7 +41,7 @@ class FaceTrackAnalyzer {
             .build()
     )
 
-    suspend fun analyze(videoFile: File): MouthTrack {
+    suspend fun analyze(videoFile: File): FaceAnalysis {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(videoFile.absolutePath)
@@ -54,6 +54,7 @@ class FaceTrackAnalyzer {
             val geometry = readGeometry(videoFile, retriever)
             val sampleTimesUs = buildSampleTimes(durationUs)
             val rawKeyframes = mutableListOf<MouthKeyframe>()
+            val rawFaceKeyframes = mutableListOf<FaceKeyframe>()
             var targetTrackingId: Int? = null
             var previousDisplayRegion: MouthRegion? = null
 
@@ -75,6 +76,7 @@ class FaceTrackAnalyzer {
                     )
                     if (face != null) {
                         val detected = mouthRegion(face, scaled.width, scaled.height)
+                        val detectedFace = faceRegion(face, scaled.width, scaled.height)
                         previousDisplayRegion = detected
                         targetTrackingId = face.trackingId ?: targetTrackingId
                         val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
@@ -85,6 +87,11 @@ class FaceTrackAnalyzer {
                         rawKeyframes += MouthKeyframe(
                             timeUs = timeUs,
                             region = detected.displayToEncoded(rotationToEncoded),
+                            confidence = detectionConfidence(face)
+                        )
+                        rawFaceKeyframes += FaceKeyframe(
+                            timeUs = timeUs,
+                            region = detectedFace.displayToEncoded(rotationToEncoded),
                             confidence = detectionConfidence(face)
                         )
                     }
@@ -102,7 +109,12 @@ class FaceTrackAnalyzer {
 
             val fallback = medianRegion(rawKeyframes.map { it.region })
             val smoothed = smoothAndRejectOutliers(rawKeyframes, fallback)
-            MouthTrack(keyframes = smoothed, fallback = fallback)
+            val faceFallback = medianFaceRegion(rawFaceKeyframes.map { it.region })
+            val smoothedFaces = smoothAndRejectFaceOutliers(rawFaceKeyframes, faceFallback)
+            FaceAnalysis(
+                mouthTrack = MouthTrack(keyframes = smoothed, fallback = fallback),
+                faceTrack = FaceTrack(keyframes = smoothedFaces, fallback = faceFallback)
+            )
         } finally {
             runCatching { retriever.release() }
             detector.close()
@@ -170,6 +182,46 @@ class FaceTrackAnalyzer {
     private fun ratio(first: Float, second: Float): Float {
         val minimum = min(first, second).coerceAtLeast(0.0001f)
         return max(first, second) / minimum
+    }
+
+    private fun smoothAndRejectFaceOutliers(
+        keyframes: List<FaceKeyframe>,
+        fallback: FaceRegion
+    ): List<FaceKeyframe> {
+        val ordered = keyframes.sortedBy { it.timeUs }
+        if (ordered.size == 1) return ordered
+
+        val result = mutableListOf<FaceKeyframe>()
+        var previous = fallback
+        ordered.forEachIndexed { index, frame ->
+            val candidate = frame.region
+            val centerJump = abs(candidate.centerX - previous.centerX) +
+                abs(candidate.centerY - previous.centerY)
+            val rejected = index > 0 && (
+                centerJump > MAX_FACE_CENTER_JUMP ||
+                    ratio(candidate.width, previous.width) > MAX_FACE_SIZE_RATIO ||
+                    ratio(candidate.height, previous.height) > MAX_FACE_SIZE_RATIO
+                )
+            val accepted = if (rejected) previous else candidate
+            val alpha = when {
+                index == 0 -> 1f
+                frame.confidence >= 0.85f -> 0.48f
+                frame.confidence >= 0.60f -> 0.34f
+                else -> 0.22f
+            }
+            val filtered = previous.interpolate(accepted, alpha).copy(
+                centerX = previous.interpolate(accepted, alpha).centerX.coerceIn(0.01f, 0.99f),
+                centerY = previous.interpolate(accepted, alpha).centerY.coerceIn(0.01f, 0.99f),
+                width = previous.interpolate(accepted, alpha).width.coerceIn(0.12f, 0.96f),
+                height = previous.interpolate(accepted, alpha).height.coerceIn(0.15f, 0.98f)
+            )
+            result += frame.copy(
+                region = filtered,
+                confidence = if (rejected) 0.15f else frame.confidence
+            )
+            previous = filtered
+        }
+        return result
     }
 
     private fun detectionConfidence(face: Face): Float {
@@ -340,6 +392,25 @@ class FaceTrackAnalyzer {
         )
     }
 
+    private fun faceRegion(face: Face, width: Int, height: Int): FaceRegion {
+        val box = face.boundingBox
+        val safeWidth = width.toFloat().coerceAtLeast(1f)
+        val safeHeight = height.toFloat().coerceAtLeast(1f)
+        val expandedWidth = box.width() * FACE_WIDTH_SCALE
+        val expandedHeight = box.height() * FACE_HEIGHT_SCALE
+        val centerX = box.centerX().toFloat()
+        // Un léger décalage vers le menton fournit au générateur le contexte
+        // inférieur recommandé par Wav2Lip sans englober inutilement le cou.
+        val centerY = box.centerY() + box.height() * FACE_CENTER_Y_SHIFT
+
+        return FaceRegion(
+            centerX = (centerX / safeWidth).coerceIn(0.01f, 0.99f),
+            centerY = (1f - centerY / safeHeight).coerceIn(0.01f, 0.99f),
+            width = (expandedWidth / safeWidth).coerceIn(0.12f, 0.96f),
+            height = (expandedHeight / safeHeight).coerceIn(0.15f, 0.98f)
+        )
+    }
+
     private fun medianRegion(regions: List<MouthRegion>): MouthRegion {
         fun median(values: List<Float>): Float {
             val sorted = values.sorted()
@@ -357,11 +428,33 @@ class FaceTrackAnalyzer {
         )
     }
 
+    private fun medianFaceRegion(regions: List<FaceRegion>): FaceRegion {
+        fun median(values: List<Float>): Float {
+            val sorted = values.sorted()
+            val middle = sorted.size / 2
+            return if (sorted.size % 2 == 0) {
+                (sorted[middle - 1] + sorted[middle]) / 2f
+            } else sorted[middle]
+        }
+
+        return FaceRegion(
+            centerX = median(regions.map { it.centerX }),
+            centerY = median(regions.map { it.centerY }),
+            width = median(regions.map { it.width }),
+            height = median(regions.map { it.height })
+        )
+    }
+
     private companion object {
         const val DETECTION_MAX_DIMENSION = 1_080
         const val MIN_TRACK_INTERVAL_US = 200_000L
         const val MAX_TRACK_SAMPLES = 360
         const val MAX_CENTER_JUMP = 0.24f
         const val MAX_SIZE_RATIO = 2.25f
+        const val MAX_FACE_CENTER_JUMP = 0.28f
+        const val MAX_FACE_SIZE_RATIO = 1.85f
+        const val FACE_WIDTH_SCALE = 1.00f
+        const val FACE_HEIGHT_SCALE = 1.08f
+        const val FACE_CENTER_Y_SHIFT = 0.020f
     }
 }

@@ -60,11 +60,27 @@ internal class OutputSurface(
         surfaceTexture.updateTexImage()
     }
 
-    fun drawImage(mouth: MouthRegion, viseme: VisemeFrame) {
-        textureRender.drawFrame(surfaceTexture, mouth, viseme)
+    fun readFaceCrop(face: FaceRegion) = textureRender.readFaceCrop(surfaceTexture, face)
+
+    fun drawImage(
+        mouth: MouthRegion,
+        viseme: VisemeFrame,
+        face: FaceRegion,
+        generatedFace: GeneratedFace?,
+        faceConfidence: Float
+    ) {
+        textureRender.drawFrame(
+            surfaceTexture = surfaceTexture,
+            mouth = mouth,
+            viseme = viseme,
+            face = face,
+            generatedFace = generatedFace,
+            faceConfidence = faceConfidence
+        )
     }
 
     fun release() {
+        runCatching { textureRender.release() }
         surface.release()
         surfaceTexture.release()
     }

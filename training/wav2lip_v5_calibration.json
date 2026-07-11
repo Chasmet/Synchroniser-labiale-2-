@@ -1,0 +1,34 @@
+{
+  "engine": "Wav2Lip-ONNX-256",
+  "model_sha256": "bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c",
+  "method": "reconstruction de la bouche avec l'audio d'origine synchronisé",
+  "metric": "erreur absolue moyenne RGB dans une ellipse labiale",
+  "representative_videos": 8,
+  "valid_samples_per_candidate": 35,
+  "candidates": {
+    "tight": {
+      "face_width_scale": 1.0,
+      "face_height_scale": 1.08,
+      "face_center_y_shift": 0.02,
+      "mean_mae": 0.02564,
+      "median_mae": 0.02467
+    },
+    "balanced": {
+      "face_width_scale": 1.1,
+      "face_height_scale": 1.16,
+      "face_center_y_shift": 0.035,
+      "mean_mae": 0.0273,
+      "median_mae": 0.02716
+    },
+    "wide": {
+      "face_width_scale": 1.18,
+      "face_height_scale": 1.24,
+      "face_center_y_shift": 0.05,
+      "mean_mae": 0.02941,
+      "median_mae": 0.02701
+    }
+  },
+  "selected": "tight",
+  "relative_mean_mae_improvement_vs_balanced": 0.0608,
+  "source_files_embedded": false
+}

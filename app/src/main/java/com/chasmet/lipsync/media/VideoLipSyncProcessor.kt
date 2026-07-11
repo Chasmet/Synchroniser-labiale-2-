@@ -1,5 +1,6 @@
 package com.chasmet.lipsync.media
 
+import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
@@ -7,18 +8,27 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.min
+
+data class RenderReport(
+    val generatedFrames: Int,
+    val fallbackFrames: Int,
+    val engineName: String
+)
 
 class VideoLipSyncProcessor {
 
     fun process(
+        context: Context,
         inputVideo: File,
         outputVideoOnly: File,
         timeline: VisemeTimeline,
-        mouthTrack: MouthTrack,
+        melTimeline: MelTimeline,
+        faceAnalysis: FaceAnalysis,
         outputAspectRatio: OutputAspectRatio,
         onProgress: (Float, Int, Int) -> Unit
-    ) {
+    ): RenderReport {
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
         var encoder: MediaCodec? = null
@@ -26,6 +36,9 @@ class VideoLipSyncProcessor {
         var outputSurface: OutputSurface? = null
         var muxer: MediaMuxer? = null
         var muxerStarted = false
+        var generativeEngine: Wav2LipEngine? = null
+        var generatedFrames = 0
+        var fallbackFrames = 0
 
         try {
             extractor.setDataSource(inputVideo.absolutePath)
@@ -94,6 +107,9 @@ class VideoLipSyncProcessor {
                 viewportHeight = geometry.viewportHeight
             )
             outputSurface = decoderSurface
+            generativeEngine = runCatching {
+                Wav2LipEngine(context.applicationContext)
+            }.getOrNull()
             val decoderCodec = MediaCodec.createDecoderByType(inputMime).also { codec ->
                 codec.configure(inputFormat, decoderSurface.surface, null, 0)
                 codec.start()
@@ -113,6 +129,8 @@ class VideoLipSyncProcessor {
             var encoderEosSignalled = false
             var outputTrack = -1
             var firstPresentationUs = -1L
+            var previousFace: FaceRegion? = null
+            var consecutiveGenerationFailures = 0
             val timeoutUs = 10_000L
 
             while (!encoderDone) {
@@ -204,8 +222,46 @@ class VideoLipSyncProcessor {
                                     decoderInfo.presentationTimeUs - firstPresentationUs
                                     ).coerceAtLeast(0L)
                                 val viseme = timeline.frameAt(normalizedTimeUs)
-                                val mouthRegion = mouthTrack.regionAt(normalizedTimeUs)
-                                decoderSurface.drawImage(mouthRegion, viseme)
+                                val mouthRegion = faceAnalysis.mouthTrack.regionAt(normalizedTimeUs)
+                                val faceRegion = faceAnalysis.faceTrack.regionAt(normalizedTimeUs)
+                                val faceConfidence = faceAnalysis.faceTrack
+                                    .confidenceAt(normalizedTimeUs)
+                                val temporalStability = faceStability(previousFace, faceRegion)
+                                val engine = generativeEngine
+                                val generatedFace = if (engine != null && faceConfidence >= 0.22f) {
+                                    runCatching {
+                                        val crop = decoderSurface.readFaceCrop(faceRegion)
+                                        engine.infer(
+                                            sourceRgbaBottomUp = crop,
+                                            melChunk = melTimeline.chunkAt(normalizedTimeUs),
+                                            temporalStability = temporalStability
+                                        )
+                                    }.onFailure {
+                                        consecutiveGenerationFailures++
+                                    }.getOrNull()
+                                } else {
+                                    engine?.resetTemporalState()
+                                    null
+                                }
+
+                                if (generatedFace != null) {
+                                    generatedFrames++
+                                    consecutiveGenerationFailures = 0
+                                } else {
+                                    fallbackFrames++
+                                    if (consecutiveGenerationFailures >= 2) {
+                                        runCatching { generativeEngine?.close() }
+                                        generativeEngine = null
+                                    }
+                                }
+                                decoderSurface.drawImage(
+                                    mouth = mouthRegion,
+                                    viseme = viseme,
+                                    face = faceRegion,
+                                    generatedFace = generatedFace,
+                                    faceConfidence = faceConfidence
+                                )
+                                previousFace = faceRegion
                                 encoderSurface.setPresentationTime(normalizedTimeUs * 1_000L)
                                 encoderSurface.swapBuffers()
 
@@ -234,7 +290,17 @@ class VideoLipSyncProcessor {
             }
 
             onProgress(1f, totalBlocks, totalBlocks)
+            return RenderReport(
+                generatedFrames = generatedFrames,
+                fallbackFrames = fallbackFrames,
+                engineName = if (generatedFrames > 0) {
+                    "Wav2Lip 256 local"
+                } else {
+                    "Moteur Pro v4 de secours"
+                }
+            )
         } finally {
+            runCatching { generativeEngine?.close() }
             if (muxerStarted) runCatching { muxer?.stop() }
             runCatching { muxer?.release() }
             runCatching { decoder?.stop() }
@@ -245,6 +311,15 @@ class VideoLipSyncProcessor {
             runCatching { inputSurface?.release() }
             runCatching { extractor.release() }
         }
+    }
+
+    private fun faceStability(previous: FaceRegion?, current: FaceRegion): Float {
+        if (previous == null) return 0f
+        val centerMotion = abs(current.centerX - previous.centerX) +
+            abs(current.centerY - previous.centerY)
+        val sizeMotion = abs(current.width - previous.width) +
+            abs(current.height - previous.height)
+        return (1f - centerMotion * 6f - sizeMotion * 3f).coerceIn(0f, 1f)
     }
 
     private fun chooseBitrate(width: Int, height: Int, frameRate: Int): Int {

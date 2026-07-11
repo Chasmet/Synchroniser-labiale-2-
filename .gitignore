@@ -12,3 +12,7 @@ training/videos/
 *.pcm
 __pycache__/
 *.pyc
+
+# Téléchargé et vérifié pendant la construction GitHub Actions. Le fichier de
+# 205 Mio dépasse la limite GitHub mais il est bien embarqué dans l'APK final.
+app/src/main/assets/wav2lip_256.onnx

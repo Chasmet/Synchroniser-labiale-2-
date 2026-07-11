@@ -227,7 +227,7 @@ private fun LipSyncApp(
 
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    "Traitement local • Moteur Pro v4 • Aucun fichier envoyé sur Internet",
+                    "Wav2Lip 256 local • NNAPI/XNNPACK • Aucun fichier envoyé sur Internet",
                     color = AppColors.TextMuted,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center
@@ -409,7 +409,7 @@ private fun Header() {
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "Synchronisation labiale IA hors ligne",
+            "Synchronisation labiale générative hors ligne",
             color = AppColors.TextMuted,
             fontSize = 14.sp
         )
