@@ -9,11 +9,16 @@ import com.chasmet.lipsync.media.AudioVisemeAnalyzer
 import com.chasmet.lipsync.media.FaceTrackAnalyzer
 import com.chasmet.lipsync.media.MediaFileUtils
 import com.chasmet.lipsync.media.Mp4Assembler
+import com.chasmet.lipsync.media.OfflineFrenchSpeechRecognizer
 import com.chasmet.lipsync.media.OutputAspectRatio
 import com.chasmet.lipsync.media.ProcessingStage
 import com.chasmet.lipsync.media.ProcessingStatus
 import com.chasmet.lipsync.media.SelectedMedia
+import com.chasmet.lipsync.media.SpeechAnalysis
+import com.chasmet.lipsync.media.SpeechGuidance
+import com.chasmet.lipsync.media.SpeechGuidanceFusion
 import com.chasmet.lipsync.media.VideoLipSyncProcessor
+import com.chasmet.lipsync.media.VoiceActivityTimeline
 import com.chasmet.lipsync.media.Wav2LipMelAnalyzer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +31,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.min
+
 
 data class LipSyncUiState(
     val video: SelectedMedia? = null,
@@ -74,6 +80,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
 
         processingJob = viewModelScope.launch {
             val temporaryFiles = mutableListOf<File>()
+            var qualitySummary = "Moteur génératif"
             try {
                 _uiState.update {
                     it.copy(
@@ -98,8 +105,8 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         it.copy(
                             status = ProcessingStatus(
                                 ProcessingStage.FACE_ANALYSIS,
-                                0.08f,
-                                "Suivi de la bouche pendant toute la vidéo"
+                                0.07f,
+                                "Suivi du visage et de la bouche"
                             )
                         )
                     }
@@ -111,12 +118,41 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         it.copy(
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_ANALYSIS,
-                                0.16f,
-                                "Spectrogramme Mel 80 bandes pour le réseau génératif"
+                                0.12f,
+                                "Détection de la voix et reconnaissance des mots"
                             )
                         )
                     }
-                    val timeline = AudioVisemeAnalyzer(context).analyze(audioFile, startUs)
+                    val speechAnalysis = runCatching {
+                        OfflineFrenchSpeechRecognizer(context).analyze(
+                            audioFile = audioFile,
+                            startUs = startUs,
+                            maxDurationUs = videoDurationUs
+                        )
+                    }.getOrElse {
+                        SpeechAnalysis(SpeechGuidance.EMPTY, VoiceActivityTimeline.EMPTY)
+                    }
+
+                    _uiState.update {
+                        val recognitionMessage = if (speechAnalysis.guidance.accepted) {
+                            "${speechAnalysis.guidance.words.size} mots reconnus • création des visèmes"
+                        } else {
+                            "Guidage audio • spectrogramme Mel 80 bandes"
+                        }
+                        it.copy(
+                            status = ProcessingStatus(
+                                ProcessingStage.AUDIO_ANALYSIS,
+                                0.18f,
+                                recognitionMessage
+                            )
+                        )
+                    }
+                    val baseTimeline = AudioVisemeAnalyzer(context).analyze(audioFile, startUs)
+                    val timeline = SpeechGuidanceFusion.fuse(
+                        base = baseTimeline,
+                        guidance = speechAnalysis.guidance,
+                        activity = speechAnalysis.activity
+                    )
                     val melTimeline = Wav2LipMelAnalyzer().analyze(
                         audioFile = audioFile,
                         startUs = startUs,
@@ -125,8 +161,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                     val usableDurationUs = min(
                         min(videoDurationUs, timeline.durationUs),
                         melTimeline.durationUs
-                    )
-                        .coerceAtLeast(100_000L)
+                    ).coerceAtLeast(100_000L)
                     val totalBlocks = ceil(usableDurationUs / 30_000_000.0)
                         .toInt()
                         .coerceAtLeast(1)
@@ -137,8 +172,8 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         it.copy(
                             status = ProcessingStatus(
                                 ProcessingStage.VIDEO_RENDER,
-                                0.20f,
-                                "${faceAnalysis.detectionCount} repères • Wav2Lip 256 • bloc 1 sur $totalBlocks",
+                                0.23f,
+                                "${faceAnalysis.detectionCount} repères • Wav2Lip + guidage vocal",
                                 1,
                                 totalBlocks
                             )
@@ -153,13 +188,13 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         faceAnalysis = faceAnalysis,
                         outputAspectRatio = outputAspectRatio
                     ) { localProgress, block, blocks ->
-                        val globalProgress = 0.20f + localProgress * 0.58f
+                        val globalProgress = 0.23f + localProgress * 0.55f
                         _uiState.update {
                             it.copy(
                                 status = ProcessingStatus(
                                     ProcessingStage.VIDEO_RENDER,
                                     globalProgress,
-                                    "Génération labiale image par image • bloc $block sur $blocks",
+                                    "Génération labiale • bloc $block sur $blocks",
                                     block,
                                     blocks
                                 )
@@ -167,12 +202,20 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         }
                     }
 
+                    val speechLabel = if (speechAnalysis.guidance.accepted) {
+                        val confidence = (speechAnalysis.guidance.averageConfidence * 100f).toInt()
+                        "${speechAnalysis.guidance.words.size} mots • confiance $confidence %"
+                    } else {
+                        "guidage audio automatique"
+                    }
+                    qualitySummary = "${renderReport.engineName} • $speechLabel"
+
                     _uiState.update {
                         it.copy(
                             status = ProcessingStatus(
-                            ProcessingStage.AUDIO_TRANSCODE,
-                            0.81f,
-                            "Audio final • ${renderReport.generatedFrames} images générées"
+                                ProcessingStage.AUDIO_TRANSCODE,
+                                0.81f,
+                                "Audio final • ${renderReport.generatedFrames} images générées"
                             )
                         )
                     }
@@ -223,7 +266,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.DONE,
                             1f,
-                            "Vidéo ${outputAspectRatio.label} enregistrée avec le moteur génératif v5"
+                            "Vidéo ${outputAspectRatio.label} enregistrée • $qualitySummary"
                         )
                     )
                 }
