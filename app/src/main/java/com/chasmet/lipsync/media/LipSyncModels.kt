@@ -9,6 +9,15 @@ data class SelectedMedia(
     val sizeBytes: Long
 )
 
+enum class OutputAspectRatio(
+    val label: String,
+    val outputWidth: Int,
+    val outputHeight: Int
+) {
+    PORTRAIT_9_16("9:16", 720, 1280),
+    LANDSCAPE_16_9("16:9", 1280, 720)
+}
+
 data class MouthRegion(
     val centerX: Float,
     val centerY: Float,
