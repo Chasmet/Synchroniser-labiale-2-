@@ -16,6 +16,7 @@ internal class OutputSurface(
 ) : SurfaceTexture.OnFrameAvailableListener {
     private val frameSyncObject = Object()
     private var frameAvailable = false
+    private val generatedFaceCorrector = GeneratedFaceRgbaCorrector()
     private val textureRender = TextureRender(
         outputWidth = outputWidth,
         outputHeight = outputHeight,
@@ -69,12 +70,13 @@ internal class OutputSurface(
         generatedFace: GeneratedFace?,
         faceConfidence: Float
     ) {
+        val guidedFace = generatedFace?.let { generatedFaceCorrector.apply(it, viseme) }
         textureRender.drawFrame(
             surfaceTexture = surfaceTexture,
             mouth = mouth,
             viseme = viseme,
             face = face,
-            generatedFace = generatedFace,
+            generatedFace = guidedFace,
             faceConfidence = faceConfidence
         )
     }
