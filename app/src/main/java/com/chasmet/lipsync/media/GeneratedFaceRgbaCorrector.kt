@@ -5,6 +5,7 @@ import java.nio.ByteOrder
 import kotlin.math.floor
 import kotlin.math.max
 
+/** Renforce uniquement la zone labiale du visage généré selon le phonème actif. */
 internal class GeneratedFaceRgbaCorrector {
     private val size = Wav2LipEngine.IMAGE_SIZE
     private val output = ByteBuffer
@@ -13,11 +14,11 @@ internal class GeneratedFaceRgbaCorrector {
 
     fun apply(generated: GeneratedFace, viseme: VisemeFrame): GeneratedFace {
         val horizontalScale = (
-            1f + viseme.width * 0.050f - viseme.roundness * 0.042f
-            ).coerceIn(0.94f, 1.06f)
+            1f + viseme.width * 0.090f - viseme.roundness * 0.085f
+            ).coerceIn(0.90f, 1.11f)
         val verticalScale = (
-            1f + viseme.openness * 0.080f - viseme.closure * 0.120f
-            ).coerceIn(0.87f, 1.09f)
+            1f + viseme.openness * 0.150f - viseme.closure * 0.200f
+            ).coerceIn(0.77f, 1.17f)
         if (kotlin.math.abs(horizontalScale - 1f) < 0.002f &&
             kotlin.math.abs(verticalScale - 1f) < 0.002f
         ) return generated
@@ -41,7 +42,7 @@ internal class GeneratedFaceRgbaCorrector {
                 val dy = (y - centerY) / radiusY
                 val distance = dx * dx + dy * dy
                 if (distance >= 1f) continue
-                val mask = 1f - smoothStep(0.36f, 1f, distance)
+                val mask = 1f - smoothStep(0.30f, 1f, distance)
                 val sourceX = centerX + (x - centerX) / horizontalScale
                 val sourceY = centerY + (y - centerY) / verticalScale
                 val blend = (mask * MAX_BLEND).coerceIn(0f, MAX_BLEND)
@@ -88,6 +89,6 @@ internal class GeneratedFaceRgbaCorrector {
     private companion object {
         const val CHANNELS = 4
         const val RGB_CHANNELS = 3
-        const val MAX_BLEND = 0.66f
+        const val MAX_BLEND = 0.82f
     }
 }
