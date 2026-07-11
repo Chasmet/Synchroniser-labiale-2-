@@ -10,6 +10,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +55,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,9 +70,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chasmet.lipsync.media.MediaFileUtils
+import com.chasmet.lipsync.media.OutputAspectRatio
 import com.chasmet.lipsync.media.ProcessingStage
 import com.chasmet.lipsync.media.SelectedMedia
 
@@ -97,6 +104,11 @@ private fun LipSyncApp(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showRatioDialog by rememberSaveable { mutableStateOf(false) }
+    var selectedRatioName by rememberSaveable {
+        mutableStateOf(OutputAspectRatio.PORTRAIT_9_16.name)
+    }
+    val selectedRatio = OutputAspectRatio.valueOf(selectedRatioName)
 
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -135,7 +147,6 @@ private fun LipSyncApp(
             ) {
                 Header()
                 Spacer(Modifier.height(22.dp))
-
                 PreviewCard(state)
                 Spacer(Modifier.height(14.dp))
 
@@ -154,7 +165,7 @@ private fun LipSyncApp(
                     media = state.audio,
                     accent = AppColors.Blue,
                     enabled = !state.isProcessing,
-                    onClick = { audioPicker.launch(arrayOf("audio/mpeg", "audio/*")) }
+                    onClick = { videoPicker.hashCode(); audioPicker.launch(arrayOf("audio/mpeg", "audio/*")) }
                 )
                 Spacer(Modifier.height(10.dp))
 
@@ -165,20 +176,18 @@ private fun LipSyncApp(
                     onValueChange = viewModel::setAudioStart
                 )
                 Spacer(Modifier.height(10.dp))
-
                 InformationCard()
                 Spacer(Modifier.height(16.dp))
 
                 AnimatedVisibility(state.isProcessing || state.status.stage == ProcessingStage.DONE) {
                     ProcessingCard(state)
                 }
-
                 if (state.isProcessing || state.status.stage == ProcessingStage.DONE) {
                     Spacer(Modifier.height(16.dp))
                 }
 
                 Button(
-                    onClick = viewModel::startSynchronization,
+                    onClick = { showRatioDialog = true },
                     enabled = state.canStart,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -201,7 +210,7 @@ private fun LipSyncApp(
                         Icon(Icons.Default.AutoAwesome, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            "Lancer la synchronisation",
+                            "Choisir le format et lancer",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
@@ -218,13 +227,25 @@ private fun LipSyncApp(
 
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    "Traitement local • Aucun fichier envoyé sur Internet",
+                    "Traitement local • Modèle personnel v2 • Aucun fichier envoyé sur Internet",
                     color = AppColors.TextMuted,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center
                 )
             }
         }
+    }
+
+    if (showRatioDialog) {
+        RatioSelectionDialog(
+            selected = selectedRatio,
+            onSelect = { selectedRatioName = it.name },
+            onDismiss = { showRatioDialog = false },
+            onConfirm = {
+                showRatioDialog = false
+                viewModel.startSynchronization(selectedRatio)
+            }
+        )
     }
 
     state.errorMessage?.let { message ->
@@ -241,6 +262,131 @@ private fun LipSyncApp(
 }
 
 @Composable
+private fun RatioSelectionDialog(
+    selected: OutputAspectRatio,
+    onSelect: (OutputAspectRatio) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = Color(0xFF202020)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Proportions",
+                    color = Color.White,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Choisis le format final avant la synchronisation labiale",
+                    color = Color(0xFF9EA4AE),
+                    fontSize = 15.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RatioOption(
+                        ratio = OutputAspectRatio.PORTRAIT_9_16,
+                        selected = selected == OutputAspectRatio.PORTRAIT_9_16,
+                        onClick = { onSelect(OutputAspectRatio.PORTRAIT_9_16) }
+                    )
+                    RatioOption(
+                        ratio = OutputAspectRatio.LANDSCAPE_16_9,
+                        selected = selected == OutputAspectRatio.LANDSCAPE_16_9,
+                        onClick = { onSelect(OutputAspectRatio.LANDSCAPE_16_9) }
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "La vidéo complète est conservée sans étirement. Des bandes peuvent apparaître si son format d'origine est différent.",
+                    color = Color(0xFF9EA4AE),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+
+                Button(
+                    onClick = onConfirm,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.Purple)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Lancer en ${selected.label}",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Annuler", color = Color(0xFFB8BECA))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RatioOption(
+    ratio: OutputAspectRatio,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .width(130.dp)
+            .clip(shape)
+            .background(if (selected) Color(0xFF2D2D2D) else Color.Transparent)
+            .border(
+                width = if (selected) 3.dp else 1.dp,
+                color = if (selected) Color.White else Color(0xFF54575D),
+                shape = shape
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .width(if (ratio == OutputAspectRatio.PORTRAIT_9_16) 48.dp else 92.dp)
+                .height(if (ratio == OutputAspectRatio.PORTRAIT_9_16) 86.dp else 52.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (selected) Color(0xFFD5D5D5) else Color(0xFF45484E))
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            ratio.label,
+            color = if (selected) Color.White else Color(0xFFA8ADB6),
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            if (ratio == OutputAspectRatio.PORTRAIT_9_16) "Vertical" else "Horizontal",
+            color = Color(0xFF8F96A3),
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
 private fun Header() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -248,16 +394,10 @@ private fun Header() {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(listOf(AppColors.Purple, AppColors.Blue))
-                    ),
+                    .background(Brush.linearGradient(listOf(AppColors.Purple, AppColors.Blue))),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = Color.White
-                )
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White)
             }
             Spacer(Modifier.width(12.dp))
             Text(
@@ -288,11 +428,7 @@ private fun PreviewCard(state: LipSyncUiState) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        listOf(AppColors.Card, AppColors.CardHighlight)
-                    )
-                ),
+                .background(Brush.linearGradient(listOf(AppColors.Card, AppColors.CardHighlight))),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -356,11 +492,7 @@ private fun FilePickerCard(
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    title,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
                 Text(
                     media?.displayName ?: "Touchez pour choisir un fichier",
                     color = AppColors.TextMuted,
@@ -370,11 +502,7 @@ private fun FilePickerCard(
                 )
             }
             if (media != null) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = AppColors.Success
-                )
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AppColors.Success)
             }
         }
     }
@@ -399,11 +527,7 @@ private fun AudioStartCard(
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Début de l'audio", color = Color.White, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        formatSeconds(valueSeconds),
-                        color = AppColors.TextMuted,
-                        fontSize = 12.sp
-                    )
+                    Text(formatSeconds(valueSeconds), color = AppColors.TextMuted, fontSize = 12.sp)
                 }
             }
             Slider(
@@ -436,7 +560,7 @@ private fun InformationCard() {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    "Une seule personne, visage de face conseillé",
+                    "Le choix 9:16 ou 16:9 apparaît avant le lancement",
                     color = AppColors.TextMuted,
                     fontSize = 12.sp
                 )
@@ -469,16 +593,8 @@ private fun ProcessingCard(state: LipSyncUiState) {
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        state.status.stage.label,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        state.status.message,
-                        color = AppColors.TextMuted,
-                        fontSize = 12.sp
-                    )
+                    Text(state.status.stage.label, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(state.status.message, color = AppColors.TextMuted, fontSize = 12.sp)
                 }
                 Text(
                     "${(state.status.progress * 100).toInt()} %",
