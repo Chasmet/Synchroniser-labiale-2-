@@ -20,6 +20,28 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
+      - name: Vérifier le modèle neuronal personnel
+        run: |
+          python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
+          python - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          model = json.loads(Path("app/src/main/assets/chk_personal_lip_model_v1.json").read_text())
+          assert model["input_size"] == len(model["input_mean"])
+          assert model["input_size"] == len(model["input_scale"])
+          previous = model["input_size"]
+          for layer in model["layers"]:
+              assert layer["rows"] == previous
+              assert len(layer["bias"]) == layer["cols"]
+              weights = base64.b64decode(layer["weights_q8_base64"])
+              assert len(weights) == layer["rows"] * layer["cols"]
+              previous = layer["cols"]
+          assert previous == 3
+          print(f"Modèle validé : {model['name']} - {model['training']['samples']} exemples")
+          PY
+
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
@@ -62,13 +84,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.2.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.3.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.2.0
-          path: LipSync-AI-Studio-v0.2.0.apk
+          name: LipSync-AI-Studio-v0.3.0
+          path: LipSync-AI-Studio-v0.3.0.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -76,11 +98,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.2.0 >/dev/null 2>&1; then
-            gh release upload v0.2.0 LipSync-AI-Studio-v0.2.0.apk --clobber
+          if gh release view v0.3.0 >/dev/null 2>&1; then
+            gh release upload v0.3.0 LipSync-AI-Studio-v0.3.0.apk --clobber
           else
-            gh release create v0.2.0 LipSync-AI-Studio-v0.2.0.apk \
+            gh release create v0.3.0 LipSync-AI-Studio-v0.3.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.2.0" \
-              --notes "Ajout du premier modèle neuronal personnalisé entraîné sur les vidéos fournies, conservation physique du format vertical ou horizontal, rotation intégrée aux pixels et tests automatiques de géométrie vidéo. Les vidéos d'entraînement ne sont pas incluses dans l'APK."
+              --title "LipSync AI Studio v0.3.0" \
+              --notes "Ajout d'un écran obligatoire de choix du format 9:16 ou 16:9, export exact sans étirement, et modèle personnel v2 entraîné sur 18 vidéos, 286 secondes et 5 541 exemples audio-bouche. Les vidéos sources ne sont pas incluses dans l'APK."
           fi

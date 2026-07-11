@@ -9,6 +9,7 @@ import com.chasmet.lipsync.media.AudioVisemeAnalyzer
 import com.chasmet.lipsync.media.FaceTrackAnalyzer
 import com.chasmet.lipsync.media.MediaFileUtils
 import com.chasmet.lipsync.media.Mp4Assembler
+import com.chasmet.lipsync.media.OutputAspectRatio
 import com.chasmet.lipsync.media.ProcessingStage
 import com.chasmet.lipsync.media.ProcessingStatus
 import com.chasmet.lipsync.media.SelectedMedia
@@ -63,7 +64,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(errorMessage = null) }
     }
 
-    fun startSynchronization() {
+    fun startSynchronization(outputAspectRatio: OutputAspectRatio) {
         if (processingJob?.isActive == true) return
         val current = _uiState.value
         val video = current.video ?: return
@@ -81,7 +82,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.PREPARING,
                             0.02f,
-                            "Copie sécurisée des fichiers"
+                            "Format ${outputAspectRatio.label} • copie des fichiers"
                         )
                     )
                 }
@@ -109,7 +110,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_ANALYSIS,
                                 0.16f,
-                                "Analyse par le modèle personnel"
+                                "Analyse par le modèle personnel v2"
                             )
                         )
                     }
@@ -128,7 +129,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.VIDEO_RENDER,
                                 0.20f,
-                                "Bloc 1 sur $totalBlocks",
+                                "${outputAspectRatio.label} • bloc 1 sur $totalBlocks",
                                 1,
                                 totalBlocks
                             )
@@ -138,7 +139,8 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         inputVideo = videoFile,
                         outputVideoOnly = videoOnly,
                         timeline = timeline,
-                        mouthRegion = mouth
+                        mouthRegion = mouth,
+                        outputAspectRatio = outputAspectRatio
                     ) { localProgress, block, blocks ->
                         val globalProgress = 0.20f + localProgress * 0.58f
                         _uiState.update {
@@ -146,7 +148,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                                 status = ProcessingStatus(
                                     ProcessingStage.VIDEO_RENDER,
                                     globalProgress,
-                                    "Bloc $block sur $blocks",
+                                    "${outputAspectRatio.label} • bloc $block sur $blocks",
                                     block,
                                     blocks
                                 )
@@ -177,7 +179,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.ASSEMBLY,
                                 0.90f,
-                                "Assemblage de la vidéo et du son"
+                                "Assemblage final en ${outputAspectRatio.label}"
                             )
                         )
                     }
@@ -209,7 +211,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.DONE,
                             1f,
-                            "Vidéo enregistrée dans Movies/LipSync AI"
+                            "Vidéo ${outputAspectRatio.label} enregistrée dans Movies/LipSync AI"
                         )
                     )
                 }

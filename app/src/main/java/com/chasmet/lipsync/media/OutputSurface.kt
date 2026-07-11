@@ -8,11 +8,23 @@ import android.view.Surface
 internal class OutputSurface(
     outputWidth: Int,
     outputHeight: Int,
-    rotationDegrees: Int
+    rotationDegrees: Int,
+    viewportX: Int,
+    viewportY: Int,
+    viewportWidth: Int,
+    viewportHeight: Int
 ) : SurfaceTexture.OnFrameAvailableListener {
     private val frameSyncObject = Object()
     private var frameAvailable = false
-    private val textureRender = TextureRender(outputWidth, outputHeight, rotationDegrees)
+    private val textureRender = TextureRender(
+        outputWidth = outputWidth,
+        outputHeight = outputHeight,
+        rotationDegrees = rotationDegrees,
+        viewportX = viewportX,
+        viewportY = viewportY,
+        viewportWidth = viewportWidth,
+        viewportHeight = viewportHeight
+    )
     private val surfaceTexture: SurfaceTexture
     val surface: Surface
 

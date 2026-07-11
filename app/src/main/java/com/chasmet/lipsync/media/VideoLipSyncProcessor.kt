@@ -16,6 +16,7 @@ class VideoLipSyncProcessor {
         outputVideoOnly: File,
         timeline: VisemeTimeline,
         mouthRegion: MouthRegion,
+        outputAspectRatio: OutputAspectRatio,
         onProgress: (Float, Int, Int) -> Unit
     ) {
         val extractor = MediaExtractor()
@@ -43,7 +44,8 @@ class VideoLipSyncProcessor {
             val geometry = renderGeometry(
                 encodedWidth = encodedWidth,
                 encodedHeight = encodedHeight,
-                rotationDegrees = readRotation(inputVideo) ?: 0
+                rotationDegrees = readRotation(inputVideo) ?: 0,
+                aspectRatio = outputAspectRatio
             )
             val frameRate = inputFormat.getIntegerOrDefault(MediaFormat.KEY_FRAME_RATE, 30)
             val sourceDurationUs = inputFormat.getLongOrDefault(
@@ -56,11 +58,6 @@ class VideoLipSyncProcessor {
                 .toInt()
                 .coerceAtLeast(1)
 
-            /*
-             * Les pixels sont réellement réencodés dans les dimensions affichées.
-             * La sortie ne dépend donc plus d'un simple drapeau de rotation que certaines
-             * applications Android ignorent.
-             */
             val outputFormat = MediaFormat.createVideoFormat(
                 VIDEO_MIME,
                 geometry.outputWidth,
@@ -90,7 +87,11 @@ class VideoLipSyncProcessor {
             val decoderSurface = OutputSurface(
                 outputWidth = geometry.outputWidth,
                 outputHeight = geometry.outputHeight,
-                rotationDegrees = geometry.rotationDegrees
+                rotationDegrees = geometry.rotationDegrees,
+                viewportX = geometry.viewportX,
+                viewportY = geometry.viewportY,
+                viewportWidth = geometry.viewportWidth,
+                viewportHeight = geometry.viewportHeight
             )
             outputSurface = decoderSurface
             val decoderCodec = MediaCodec.createDecoderByType(inputMime).also { codec ->

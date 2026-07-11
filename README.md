@@ -2,21 +2,24 @@
 
 Application Android de synchronisation labiale locale. Elle associe une vidéo contenant un visage à un fichier MP3, analyse le visage et le signal audio directement sur le téléphone, anime la zone de la bouche, puis exporte un MP4 dans la galerie.
 
-## Version 0.2.0
+## Version 0.3.0
 
-- premier réseau neuronal personnalisé entraîné sur les vidéos fournies par l'utilisateur ;
-- 887 exemples audio–bouche extraits de 8 vidéos, soit environ 170 secondes exploitables ;
-- seuls les poids entraînés sont intégrés dans l'APK ;
-- aucune vidéo personnelle n'est publiée dans le dépôt ni envoyée vers un serveur ;
-- le format d'origine est conservé physiquement dans les pixels : vertical reste vertical et horizontal reste horizontal ;
-- les rotations 90°, 180° et 270° sont appliquées pendant le réencodage au lieu de dépendre uniquement d'une métadonnée ;
-- tests automatiques de géométrie vidéo.
+- écran obligatoire de choix du format juste avant la génération ;
+- choix manuel entre **9:16 vertical** et **16:9 horizontal** ;
+- export réel en 720 × 1280 ou 1280 × 720 ;
+- aucune déformation de l'image : la vidéo est centrée et conservée entière ;
+- modèle personnel v2 entraîné sur 18 vidéos ;
+- environ 286 secondes de données et 5 541 exemples audio–bouche ;
+- réseau renforcé avec deux couches de 64 et 32 neurones ;
+- poids quantifiés pour garder une application légère et rapide ;
+- aucune vidéo personnelle publiée dans le dépôt ou intégrée à l'APK.
 
 ## Fonctionnalités
 
 - import d'une vidéo depuis Android ;
 - import d'un MP3 ;
 - choix du point de départ du son ;
+- choix 9:16 ou 16:9 avant chaque traitement ;
 - détection locale du visage avec un modèle embarqué ;
 - analyse locale des sons et création d'une chronologie de visèmes ;
 - combinaison du modèle neuronal personnel et du moteur audio de sécurité ;
@@ -44,7 +47,7 @@ Application Android de synchronisation labiale locale. Elle associe une vidéo c
 
 ## Limites actuelles
 
-Le modèle 0.2.0 apprend une relation personnalisée entre le signal audio et les mouvements de bouche observés dans les vidéos d'entraînement. Il reste volontairement compact pour fonctionner dans un téléphone Android sans serveur. Ce n'est pas encore un modèle génératif photoréaliste lourd capable de recréer entièrement les lèvres comme une infrastructure GPU de studio. Les profils complets, les mains devant la bouche, les mouvements rapides et plusieurs visages réduisent la qualité.
+Le modèle 0.3.0 apprend une relation personnalisée entre le signal audio et les mouvements de bouche observés dans les vidéos d'entraînement. Il est plus grand et plus précis que le modèle précédent, mais ce n'est pas encore un modèle génératif photoréaliste lourd capable de recréer entièrement de nouvelles lèvres comme une infrastructure GPU de studio. Ajouter plusieurs gigaoctets artificiellement à l'APK n'améliorerait pas la qualité. Les profils complets, les mains devant la bouche, les mouvements rapides et plusieurs visages réduisent encore la précision.
 
 ## Construction automatique
 
