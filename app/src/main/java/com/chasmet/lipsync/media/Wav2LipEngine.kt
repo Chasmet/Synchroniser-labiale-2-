@@ -99,8 +99,7 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
     fun infer(
         sourceRgbaBottomUp: ByteBuffer,
         melChunk: FloatArray,
-        temporalStability: Float,
-        viseme: VisemeFrame
+        temporalStability: Float
     ): GeneratedFace {
         require(sourceRgbaBottomUp.remaining() >= IMAGE_SIZE * IMAGE_SIZE * RGBA_CHANNELS)
         require(melChunk.size == MEL_FLOATS)
@@ -129,7 +128,6 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
             temporalStability = temporalStability
         )
         colorMatchLowerFace(sourceRgbaBottomUp, prediction)
-        GeneratedFacePhonemeCorrector.apply(prediction, viseme)
         predictionToRgbaBottomUp(prediction, rgbaOutput)
         return GeneratedFace(rgbaOutput.duplicate().apply { position(0) }, audioActivity)
     }
