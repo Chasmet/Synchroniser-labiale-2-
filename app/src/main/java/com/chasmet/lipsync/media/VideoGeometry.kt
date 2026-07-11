@@ -66,11 +66,9 @@ internal fun renderGeometry(
 }
 
 /**
- * Le rendu a déjà appliqué la rotation de la vidéo source aux pixels.
- * L'assemblage final ne doit donc jamais recopier cette ancienne rotation.
- * On choisit uniquement l'orientation nécessaire pour que les dimensions encodées
- * soient affichées dans le format demandé, même sur un encodeur Android qui inverse
- * largeur et hauteur.
+ * Le rendu encode déjà des pixels dans les dimensions exactes demandées.
+ * Une orientation MP4 supplémentaire ferait pivoter ces pixels une seconde fois
+ * sur certains lecteurs Android. Le fichier final doit donc toujours être neutre.
  */
 internal fun finalOrientationHint(
     encodedWidth: Int,
@@ -78,9 +76,12 @@ internal fun finalOrientationHint(
     aspectRatio: OutputAspectRatio
 ): Int {
     require(encodedWidth > 0 && encodedHeight > 0) { "Dimensions vidéo finales invalides" }
-    val encodedIsPortrait = encodedHeight > encodedWidth
-    val requestedIsPortrait = aspectRatio == OutputAspectRatio.PORTRAIT_9_16
-    return if (encodedIsPortrait == requestedIsPortrait) 0 else 90
+    require(
+        encodedWidth == aspectRatio.outputWidth && encodedHeight == aspectRatio.outputHeight
+    ) {
+        "Les pixels encodés ne correspondent pas au format ${aspectRatio.label}"
+    }
+    return 0
 }
 
 internal fun displayedDimensions(

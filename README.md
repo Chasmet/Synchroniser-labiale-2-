@@ -1,61 +1,58 @@
 # LipSync AI Studio
 
-Application Android de synchronisation labiale locale. Elle associe une vidéo contenant un visage à un fichier MP3, analyse le visage et le signal audio directement sur le téléphone, anime la zone de la bouche, puis exporte un MP4 dans la galerie.
+Application Android locale de synchronisation labiale. Elle associe une vidéo contenant un visage à un fichier MP3, suit la bouche pendant toute la vidéo, analyse le signal audio sur le téléphone puis exporte un MP4 dans la galerie.
 
-## Version 0.4.0
+## Version 0.5.0
 
-- écran obligatoire de choix entre **9:16 vertical** et **16:9 horizontal** ;
+- choix obligatoire entre **9:16 vertical** et **16:9 horizontal** avant le lancement ;
 - sortie contrôlée en 720 × 1280 ou 1280 × 720 ;
-- suivi de la bouche sur toute la vidéo au lieu d'une position unique ;
-- interpolation de la position de la bouche image par image ;
-- interpolation des visèmes entre deux fenêtres audio pour supprimer les sauts ;
-- analyse fréquentielle locale sur six zones de la voix ;
+- aucune rotation MP4 ajoutée après l'encodage : le format choisi reste stable ;
+- suivi dynamique de la bouche et interpolation image par image ;
+- interpolation des visèmes entre les fenêtres audio ;
 - anticipation temporelle d'environ 80 ms ;
-- détection renforcée des fermetures de lèvres de type M, P et B ;
-- lissage différent pour l'ouverture et la fermeture de la bouche ;
-- conservation du réseau neuronal personnel v2 validé ;
-- ajout d'un profil temporel v3 calibré sur trois nouvelles vidéos ;
-- 21 vidéos et 6 695 exemples audio–bouche cumulés dans les données de calibration ;
-- aucun fichier vidéo personnel publié dans le dépôt ou intégré à l'APK.
-
-Un second réseau expérimental entraîné uniquement sur les trois nouvelles vidéos a été évalué puis rejeté, car sa validation était inférieure au modèle existant. Il n'est pas inclus dans l'application.
+- détection renforcée des fermetures de lèvres M, P et B ;
+- nouveau réseau personnel v3 à deux couches de 96 et 48 neurones ;
+- les 28 vidéos reçues ont été examinées, 20 étaient exploitables ;
+- 590,17 secondes de sources analysées, 274,76 secondes de lèvres mesurées et 6 869 exemples audio–bouche ;
+- six caractéristiques audio, dont trois bandes fréquentielles ;
+- poids quantifiés pour conserver une application légère ;
+- aucune vidéo personnelle publiée dans le dépôt ou intégrée à l'APK.
 
 ## Fonctionnalités
 
-- import d'une vidéo depuis Android ;
-- import d'un MP3 ;
+- import d'une vidéo et d'un MP3 ;
 - choix du point de départ du son ;
-- choix 9:16 ou 16:9 avant chaque traitement ;
 - détection locale du visage avec ML Kit ;
-- suivi dynamique de la bouche avec filtrage des mouvements incohérents ;
+- suivi dynamique de la bouche avec rejet des mouvements incohérents ;
 - réseau neuronal personnel et moteur fréquentiel temporel ;
 - rendu GPU image par image ;
-- suivi de progression par blocs de 30 secondes ;
+- progression par blocs de 30 secondes ;
 - conversion du MP3 en AAC ;
-- vérification de l'orientation du MP4 final ;
+- vérification des dimensions et de l'orientation du MP4 final ;
 - export dans `Movies/LipSync AI` ;
 - aucun serveur et aucune API distante.
 
 ## Installation
 
 1. Ouvrir l'onglet **Releases** du dépôt.
-2. Télécharger le fichier APK de la dernière version.
+2. Télécharger l'APK de la dernière version.
 3. Autoriser l'installation d'applications inconnues pour le navigateur utilisé.
 4. Installer l'APK.
 
-## Conseils pour un meilleur résultat
+## Conseils
 
 - utiliser une seule personne ;
 - filmer le visage de face ou légèrement de côté ;
-- garder la bouche visible ;
-- choisir une vidéo bien éclairée ;
-- commencer par une séquence courte de 10 à 30 secondes ;
-- laisser le téléphone branché pendant les longs traitements.
+- garder la bouche visible et bien éclairée ;
+- commencer par une séquence de 10 à 30 secondes ;
+- laisser le téléphone branché pendant les traitements longs.
 
 ## Limites actuelles
 
-La version 0.4.0 améliore surtout le suivi du visage, la compréhension temporelle de la voix et la stabilité du mouvement. Elle reste un moteur mobile local qui déforme intelligemment la zone de la bouche. Ce n'est pas encore un modèle génératif photoréaliste lourd recréant chaque image du visage. Plusieurs visages, une bouche cachée, un profil complet ou de grands mouvements rapides peuvent encore réduire la qualité.
+La version 0.5.0 est un moteur mobile local qui déforme intelligemment la zone de la bouche. Ce n'est pas encore un modèle génératif photoréaliste lourd recréant entièrement le visage. Une bouche cachée, un profil complet, plusieurs visages ou de grands mouvements rapides peuvent réduire la qualité.
 
-## Construction automatique
+## Entraînement et construction
 
-Le workflow GitHub Actions valide les deux fichiers de modèle, exécute les tests unitaires, Android Lint, compile l'APK signé et publie la version installable dans les Releases du dépôt.
+Le pipeline reproductible se trouve dans `tools/train_personal_lip_model.py`. Il examine les vidéos privées, extrait les mouvements de bouche et n'enregistre dans le dépôt que les poids appris et un rapport sans image.
+
+GitHub Actions valide les modèles, exécute les tests unitaires et Android Lint, compile l'APK signé puis publie la version installable dans les Releases.

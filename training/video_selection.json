@@ -1,0 +1,30 @@
+{
+  "1000101855.mp4": {
+    "include": false,
+    "reason": "animal : aucune bouche humaine à apprendre"
+  },
+  "1000103456.mp4": {
+    "include": false,
+    "reason": "visage masqué et bouche invisible"
+  },
+  "1000104375.mp4": {
+    "include": false,
+    "reason": "montgolfière : aucune bouche humaine exploitable"
+  },
+  "1000105642.mp4": {
+    "include": false,
+    "reason": "motard filmé de loin : bouche invisible"
+  },
+  "1000119625.mp4": {
+    "include": false,
+    "reason": "visage trop petit dans une incrustation d'écran"
+  },
+  "1000119969.mp4": {
+    "include": false,
+    "reason": "capture d'écran : visage trop petit pour des mesures fiables"
+  },
+  "1000119971.mp4": {
+    "include": false,
+    "reason": "capture d'écran : visage trop petit pour des mesures fiables"
+  }
+}

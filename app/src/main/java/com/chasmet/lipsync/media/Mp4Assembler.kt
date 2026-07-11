@@ -34,6 +34,10 @@ class Mp4Assembler {
 
             val encodedWidth = videoFormat.getInteger(MediaFormat.KEY_WIDTH)
             val encodedHeight = videoFormat.getInteger(MediaFormat.KEY_HEIGHT)
+            check(encodedWidth == outputAspectRatio.outputWidth &&
+                encodedHeight == outputAspectRatio.outputHeight) {
+                "Dimensions vidéo intermédiaire inattendues : ${encodedWidth} × ${encodedHeight}"
+            }
             val orientationHint = finalOrientationHint(
                 encodedWidth = encodedWidth,
                 encodedHeight = encodedHeight,
@@ -48,11 +52,7 @@ class Mp4Assembler {
                 MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
             )
 
-            /*
-             * Ne jamais recopier la rotation de la vidéo intermédiaire : les pixels
-             * ont déjà été réorientés pendant le rendu OpenGL. On impose uniquement
-             * la rotation nécessaire pour que le lecteur affiche le ratio demandé.
-             */
+            /* Les pixels ont déjà été réorientés et dimensionnés pendant le rendu. */
             muxer.setOrientationHint(orientationHint)
 
             val videoTargetTrack = muxer.addTrack(videoFormat)
@@ -139,6 +139,9 @@ class Mp4Assembler {
             val videoFormat = extractor.getTrackFormat(videoTrack)
             val encodedWidth = videoFormat.getInteger(MediaFormat.KEY_WIDTH)
             val encodedHeight = videoFormat.getInteger(MediaFormat.KEY_HEIGHT)
+            check(encodedWidth == expected.outputWidth && encodedHeight == expected.outputHeight) {
+                "Dimensions encodées incorrectes : ${encodedWidth} × ${encodedHeight}"
+            }
 
             retriever.setDataSource(file.absolutePath)
             val rotation = retriever

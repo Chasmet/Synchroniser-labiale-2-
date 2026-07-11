@@ -1,6 +1,7 @@
 package com.chasmet.lipsync.media
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class VideoGeometryTest {
@@ -97,15 +98,14 @@ class VideoGeometryTest {
     }
 
     @Test
-    fun landscapeEncodedFramesAreRotatedForPortraitChoice() {
-        val hint = finalOrientationHint(
-            encodedWidth = 1280,
-            encodedHeight = 720,
-            aspectRatio = OutputAspectRatio.PORTRAIT_9_16
-        )
-
-        assertEquals(90, hint)
-        assertEquals(DisplayedDimensions(720, 1280), displayedDimensions(1280, 720, hint))
+    fun landscapeEncodedFramesAreRejectedForPortraitChoice() {
+        assertThrows(IllegalArgumentException::class.java) {
+            finalOrientationHint(
+                encodedWidth = 1280,
+                encodedHeight = 720,
+                aspectRatio = OutputAspectRatio.PORTRAIT_9_16
+            )
+        }
     }
 
     @Test
@@ -121,14 +121,13 @@ class VideoGeometryTest {
     }
 
     @Test
-    fun portraitEncodedFramesAreRotatedForLandscapeChoice() {
-        val hint = finalOrientationHint(
-            encodedWidth = 720,
-            encodedHeight = 1280,
-            aspectRatio = OutputAspectRatio.LANDSCAPE_16_9
-        )
-
-        assertEquals(90, hint)
-        assertEquals(DisplayedDimensions(1280, 720), displayedDimensions(720, 1280, hint))
+    fun portraitEncodedFramesAreRejectedForLandscapeChoice() {
+        assertThrows(IllegalArgumentException::class.java) {
+            finalOrientationHint(
+                encodedWidth = 720,
+                encodedHeight = 1280,
+                aspectRatio = OutputAspectRatio.LANDSCAPE_16_9
+            )
+        }
     }
 }

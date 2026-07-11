@@ -19,6 +19,51 @@ internal data class AudioFeatureFrame(
 )
 
 /**
+ * Entrées partagées avec le script d'entraînement. Les modèles historiques à
+ * 20 entrées restent compatibles ; le nouveau réseau utilise 38 entrées et les
+ * trois bandes fréquentielles déjà calculées par le moteur temporel.
+ */
+internal fun buildPersonalModelInput(
+    frames: List<AudioFeatureFrame>,
+    index: Int,
+    offsets: IntArray,
+    expectedSize: Int
+): FloatArray {
+    require(frames.isNotEmpty()) { "Aucune donnée audio pour le modèle personnel" }
+    val featureCount = when (expectedSize) {
+        offsets.size * 3 + 3 + 2 -> 3
+        offsets.size * 6 + 6 + 2 -> 6
+        else -> error("Taille d'entrée du modèle non prise en charge : $expectedSize")
+    }
+
+    fun AudioFeatureFrame.values(): FloatArray = floatArrayOf(
+        rms,
+        zeroCrossingRate,
+        transientRate,
+        lowBand,
+        midBand,
+        highBand
+    )
+
+    val input = FloatArray(expectedSize)
+    var cursor = 0
+    offsets.forEach { offset ->
+        val values = frames[(index + offset).coerceIn(0, frames.lastIndex)].values()
+        repeat(featureCount) { feature -> input[cursor++] = values[feature] }
+    }
+
+    val previous = frames[(index - 1).coerceAtLeast(0)].values()
+    val current = frames[index.coerceIn(0, frames.lastIndex)]
+    val next = frames[(index + 1).coerceAtMost(frames.lastIndex)].values()
+    repeat(featureCount) { feature ->
+        input[cursor++] = (next[feature] - previous[feature]) / 2f
+    }
+    input[cursor++] = ln((1f + current.rms * 100f).toDouble()).toFloat()
+    input[cursor] = current.transientRate / (current.rms + 0.0001f)
+    return input
+}
+
+/**
  * Réseau neuronal personnel entraîné sur les vidéos fournies par l'utilisateur.
  * Les vidéos sources ne sont jamais intégrées à l'APK : seuls les poids appris le sont.
  */
@@ -37,25 +82,7 @@ internal class PersonalLipModel private constructor(
     )
 
     fun predict(frames: List<AudioFeatureFrame>, index: Int): FloatArray {
-        require(frames.isNotEmpty()) { "Aucune donnée audio pour le modèle personnel" }
-        val input = FloatArray(inputMean.size)
-        var cursor = 0
-
-        offsets.forEach { offset ->
-            val frame = frames[(index + offset).coerceIn(0, frames.lastIndex)]
-            input[cursor++] = frame.rms
-            input[cursor++] = frame.zeroCrossingRate
-            input[cursor++] = frame.transientRate
-        }
-
-        val previous = frames[(index - 1).coerceAtLeast(0)]
-        val current = frames[index.coerceIn(0, frames.lastIndex)]
-        val next = frames[(index + 1).coerceAtMost(frames.lastIndex)]
-        input[cursor++] = (next.rms - previous.rms) / 2f
-        input[cursor++] = (next.zeroCrossingRate - previous.zeroCrossingRate) / 2f
-        input[cursor++] = (next.transientRate - previous.transientRate) / 2f
-        input[cursor++] = ln((1f + current.rms * 100f).toDouble()).toFloat()
-        input[cursor] = current.transientRate / (current.rms + 0.0001f)
+        val input = buildPersonalModelInput(frames, index, offsets, inputMean.size)
 
         var activations = FloatArray(input.size) { inputIndex ->
             (input[inputIndex] - inputMean[inputIndex]) /

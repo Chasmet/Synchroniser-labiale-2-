@@ -8,3 +8,7 @@ build/
 captures/
 .externalNativeBuild/
 .cxx/
+training/videos/
+*.pcm
+__pycache__/
+*.pyc

@@ -32,6 +32,8 @@ jobs:
           model = json.loads(Path("app/src/main/assets/chk_personal_lip_model_v1.json").read_text())
           assert model["input_size"] == len(model["input_mean"])
           assert model["input_size"] == len(model["input_scale"])
+          assert model["version"] >= 3
+          assert len(model["audio_features"]) == 6
           previous = model["input_size"]
           for layer in model["layers"]:
               assert layer["rows"] == previous
@@ -99,13 +101,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.4.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.5.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.4.0
-          path: LipSync-AI-Studio-v0.4.0.apk
+          name: LipSync-AI-Studio-v0.5.0
+          path: LipSync-AI-Studio-v0.5.0.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -113,11 +115,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.4.0 >/dev/null 2>&1; then
-            gh release upload v0.4.0 LipSync-AI-Studio-v0.4.0.apk --clobber
+          if gh release view v0.5.0 >/dev/null 2>&1; then
+            gh release upload v0.5.0 LipSync-AI-Studio-v0.5.0.apk --clobber
           else
-            gh release create v0.4.0 LipSync-AI-Studio-v0.4.0.apk \
+            gh release create v0.5.0 LipSync-AI-Studio-v0.5.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.4.0" \
-              --notes "Moteur IA temporel v3 : suivi dynamique de la bouche sur toute la vidéo, interpolation image par image, analyse fréquentielle de la voix, anticipation de 80 ms, détection des fermetures M/P/B et profil personnalisé calibré sur 21 vidéos et 6 695 exemples cumulés. Les vidéos personnelles ne sont pas incluses dans l'APK."
+              --title "LipSync AI Studio v0.5.0" \
+              --notes "Fusion du moteur temporel et du nouveau réseau personnel : suivi dynamique de la bouche, analyse de 28 vidéos, 6 869 exemples retenus et six caractéristiques audio. Correction robuste du choix 9:16 ou 16:9 sans rotation MP4 finale."
           fi
