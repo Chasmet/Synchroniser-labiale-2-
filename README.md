@@ -2,53 +2,48 @@
 
 Application Android locale de synchronisation labiale. Elle associe une vidéo contenant un visage à un MP3, recrée la zone labiale avec un réseau audio-visuel et exporte le résultat dans la galerie sans envoyer les fichiers sur Internet.
 
-## Version 0.9.0 traqueur labial dédié
+## Version 0.10.0 alignement phonème par phonème
 
-- véritable génération neuronale Wav2Lip 256 × 256 image par image ;
-- reconnaissance vocale française locale Vosk avec mots et horodatages ;
-- spectrogramme Mel, détection de parole, silences et pauses ;
+- génération neuronale Wav2Lip 256 × 256 image par image ;
+- reconnaissance vocale française locale Vosk avec mots, horaires et confiance ;
+- conversion locale des mots en phonèmes français visibles ;
+- alignement acoustique toutes les 10 ms à l'intérieur de chaque mot ;
+- analyse de l'énergie, des attaques, des hautes fréquences et des passages par zéro ;
+- fermeture anticipée des lèvres pour B, P et M ;
+- formes renforcées pour F/V, A, E, I, O, OU, CH/J et consonnes ;
+- exemple « bonjour » : B → ON → J → OU → R ;
+- guidage fort uniquement lorsque la reconnaissance et l'alignement sont fiables ;
 - traqueur dédié utilisant les contours supérieur et inférieur des lèvres ;
-- validation géométrique de la position, de la largeur, de la hauteur et de la symétrie ;
-- mémoire temporelle à vitesse constante pendant les pertes très courtes ;
-- rejet automatique d'une détection située sur le front, les joues ou hors du visage ;
-- retour prudent sur la dernière position fiable au lieu de déplacer le masque ;
-- analyse portée jusqu'à 10 repères par seconde, avec interpolation entre les repères ;
-- verrouillage du même visage lorsqu'il y a plusieurs personnes ;
-- repère OpenGL unique entre la vidéo, le visage et la bouche ;
-- masque Wav2Lip centré directement sur la bouche suivie ;
-- barrière de sécurité finale avant toute fusion générative ;
-- transcription utilisée seulement lorsque sa confiance est suffisante ;
+- validation géométrique et mémoire temporelle pendant les pertes courtes ;
+- rejet automatique d'une détection située hors de la bouche ;
+- repère OpenGL unique entre la vidéo, le visage et les lèvres ;
 - accélération locale ONNX Runtime avec NNAPI, XNNPACK puis CPU de secours ;
 - compensation de 560 ms conservée pour le moteur Pro v4 de secours ;
 - choix obligatoire entre **9:16 vertical** et **16:9 horizontal** ;
 - sortie contrôlée en 720 × 1280 ou 1280 × 720 ;
 - aucune vidéo, piste audio ou transcription envoyée sur Internet.
 
-## Fonctionnement du traqueur
-
-Le suivi ne dépend plus seulement de trois points du visage. ML Kit fournit maintenant quatre contours détaillés : haut de la lèvre supérieure, bas de la lèvre supérieure, haut de la lèvre inférieure et bas de la lèvre inférieure.
-
-Chaque observation est contrôlée avant utilisation :
-
-1. les points doivent se trouver dans la partie basse du visage ;
-2. la taille des lèvres doit être cohérente avec la taille du visage ;
-3. la position doit rester proche de la trajectoire précédente ;
-4. un saut ou une taille impossible est rejeté ;
-5. pendant une perte courte, la trajectoire précédente est prédite ;
-6. après plusieurs pertes, le moteur revient sur une zone prudente et désactive la fusion si la confiance est trop faible.
-
-Cette architecture réduit fortement le risque qu'une animation soit appliquée ailleurs que sur les lèvres. Elle ne constitue pas une garantie absolue pour toutes les vidéos : une bouche entièrement cachée, un visage de profil extrême ou une image très floue peuvent toujours empêcher une détection fiable. Dans ce cas, l'application préfère ne pas appliquer Wav2Lip à cette image plutôt que modifier une mauvaise zone.
-
-## Architecture de décision
-
-Le moteur utilise quatre sources complémentaires :
+## Chaîne de synchronisation
 
 1. le traqueur de contours détermine la position réelle des lèvres ;
-2. le spectrogramme Mel pilote Wav2Lip ;
-3. la détection de parole ferme la bouche pendant les vrais silences ;
-4. le texte horodaté corrige seulement les phonèmes français les plus visibles.
+2. Vosk reconnaît les mots et leurs fenêtres temporelles ;
+3. le lexique phonétique transforme les mots en sons français ;
+4. l'aligneur acoustique déplace les frontières des phonèmes selon le signal réel ;
+5. le spectrogramme Mel pilote Wav2Lip ;
+6. les phonèmes bien alignés corrigent ouverture, largeur, rondeur et fermeture ;
+7. la détection de parole ferme la bouche pendant les vrais silences.
 
 Une transcription peu fiable ou une position labiale douteuse est rejetée automatiquement. L’application continue avec les sources encore fiables sans bloquer l’export.
+
+## Exemple « bonjour »
+
+- **B** : fermeture complète des deux lèvres ;
+- **ON** : ouverture arrondie ;
+- **J** : passage postalvéolaire plus étroit ;
+- **OU** : lèvres serrées et projetées ;
+- **R** : relâchement consonantique final.
+
+Le minutage proportionnel reste disponible en secours si l'audio ne permet pas un alignement acoustique fiable.
 
 ## Fonctionnalités
 
@@ -57,9 +52,11 @@ Une transcription peu fiable ou une position labiale douteuse est rejetée autom
 - détection du visage et contours labiaux ML Kit ;
 - suivi temporel spécialisé des lèvres ;
 - reconnaissance vocale française hors ligne avec Vosk ;
+- phonétiseur français local sans serveur ;
+- aligneur acoustique léger compatible Android ;
 - génération Wav2Lip 256 avec ONNX Runtime Android ;
 - rendu OpenGL avec fusion centrée sur la bouche ;
-- micro-corrections phonétiques ;
+- correction phonétique renforcée du visage généré ;
 - moteur neuronal personnel Pro v4 comme secours ;
 - progression par blocs de 30 secondes ;
 - export dans `Movies/LipSync AI` ;
@@ -69,21 +66,28 @@ Une transcription peu fiable ou une position labiale douteuse est rejetée autom
 
 - utiliser une personne principale avec la bouche visible ;
 - privilégier un visage de face ou légèrement de côté ;
-- éviter qu'une main ou un objet masque complètement la bouche ;
+- conserver un visage assez grand pour que les lèvres restent détaillées ;
+- éviter une musique beaucoup plus forte que la voix ;
 - commencer par une séquence de 5 à 15 secondes ;
 - laisser le téléphone branché pour les traitements longs.
 
+## Limites
+
+Un visage très petit, flou, masqué ou de profil extrême ne permet pas de rendre chaque phonème lisible. Le français comporte aussi des liaisons et des mots ambigus. La version 0.10.0 améliore l'articulation explicite, mais le résultat final doit être confirmé sur les exports réels du téléphone.
+
+La feuille de route et les contre-arguments techniques sont documentés dans `ROADMAP_PHONEME_V10.md`.
+
 ## Performances et stockage
 
-Les modèles Wav2Lip et Vosk sont inclus dans l’APK. Au premier traitement, le modèle vocal français est extrait dans l’espace privé de l’application. Le traqueur labial n'ajoute aucun téléchargement : il utilise le moteur ML Kit déjà présent.
+Les modèles Wav2Lip et Vosk sont inclus dans l’APK. Au premier traitement, le modèle vocal français est extrait dans l’espace privé de l’application. L'aligneur phonétique n'ajoute aucun gros modèle supplémentaire et fonctionne sur le processeur du téléphone.
 
-L'analyse des lèvres est plus fréquente que dans la version 0.8.1. Le prétraitement peut donc être légèrement plus long, mais la zone générative est mieux verrouillée. Si la reconnaissance vocale échoue, elle est ignorée. Si Wav2Lip échoue ou manque de mémoire, l’export continue avec le moteur Pro v4 recalibré.
+Si la reconnaissance vocale échoue, elle est ignorée. Si Wav2Lip échoue ou manque de mémoire, l’export continue avec le moteur Pro v4 recalibré.
 
 ## Entraînement, calibration et construction
 
-Le pipeline reproductible du modèle personnel se trouve dans `tools/train_personal_lip_model.py`. Les vidéos privées ne sont pas publiées : seuls les poids quantifiés et des rapports sans image sont conservés. Les diagnostics sont documentés dans `training/` sans inclure les vidéos sources.
+Le pipeline reproductible du modèle personnel se trouve dans `tools/train_personal_lip_model.py`. Les vidéos privées ne sont pas publiées : seuls les poids quantifiés et des rapports sans image sont conservés.
 
-GitHub Actions télécharge Wav2Lip et Vosk, vérifie leurs empreintes SHA-256, valide le traqueur et les modèles, exécute les tests et Android Lint, puis compile et publie l’APK signé.
+GitHub Actions télécharge Wav2Lip et Vosk, vérifie leurs empreintes SHA-256, valide le traqueur et l'aligneur phonétique, exécute les tests et Android Lint, puis compile et publie l’APK signé.
 
 ## Conditions des modèles
 

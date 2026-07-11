@@ -24,7 +24,10 @@ data class PhonemeCue(
     val startUs: Long,
     val endUs: Long,
     val shape: FrenchLipShape,
-    val confidence: Float
+    val confidence: Float,
+    val phoneme: String = "",
+    val sourceWord: String = "",
+    val alignmentConfidence: Float = confidence
 )
 
 data class SpeechGuidance(
@@ -33,7 +36,9 @@ data class SpeechGuidance(
     val cues: List<PhonemeCue>,
     val averageConfidence: Float,
     val accepted: Boolean,
-    val engine: String
+    val engine: String,
+    val alignmentConfidence: Float = 0f,
+    val alignedPhonemeCount: Int = 0
 ) {
     fun cueAt(timeUs: Long): PhonemeCue? {
         if (!accepted || cues.isEmpty()) return null
@@ -58,7 +63,9 @@ data class SpeechGuidance(
             cues = emptyList(),
             averageConfidence = 0f,
             accepted = false,
-            engine = "Aucune transcription"
+            engine = "Aucune transcription",
+            alignmentConfidence = 0f,
+            alignedPhonemeCount = 0
         )
     }
 }
