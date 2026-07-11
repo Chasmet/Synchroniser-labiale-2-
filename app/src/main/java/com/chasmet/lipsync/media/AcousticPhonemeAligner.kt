@@ -67,17 +67,12 @@ internal object AcousticPhonemeAligner {
         return usableTokens.mapIndexed { index, token ->
             val startFrame = boundaries[index]
             val endFrame = boundaries[index + 1].coerceAtLeast(startFrame + 1)
-            val rawStartUs = max(word.startUs, startFrame * FRAME_US)
-            val rawEndUs = if (index == usableTokens.lastIndex) {
-                word.endUs
+            val startUs = max(word.startUs, startFrame * FRAME_US)
+            val endUs = if (index == usableTokens.lastIndex) {
+                word.endUs.coerceAtLeast(startUs + 1L)
             } else {
-                minOf(word.endUs, endFrame * FRAME_US)
+                minOf(word.endUs, endFrame * FRAME_US).coerceAtLeast(startUs + 1L)
             }
-            val startUs = if (token.closureLeadUs > 0L) {
-                (rawStartUs - token.closureLeadUs).coerceAtLeast(word.startUs)
-            } else rawStartUs
-            val endUs = rawEndUs.coerceAtLeast(startUs + MIN_CUE_US)
-                .coerceAtMost(word.endUs.coerceAtLeast(startUs + 1L))
             val acousticScore = segmentScore(
                 token = token,
                 startFrame = startFrame,
@@ -95,7 +90,7 @@ internal object AcousticPhonemeAligner {
                     word.confidence * (0.52f + acousticScore * 0.48f)
                     ).coerceIn(0f, 1f)
             )
-        }.zipWithNextOrSelf()
+        }
     }
 
     private fun initialBoundaries(
@@ -261,17 +256,8 @@ internal object AcousticPhonemeAligner {
     private fun percentile(values: FloatArray, fraction: Float): Float {
         if (values.isEmpty()) return 0f
         val sorted = values.sortedArray()
-        val index = ((sorted.lastIndex) * fraction.coerceIn(0f, 1f)).toInt()
+        val index = (sorted.lastIndex * fraction.coerceIn(0f, 1f)).toInt()
         return sorted[index]
-    }
-
-    private fun List<PhonemeCue>.zipWithNextOrSelf(): List<PhonemeCue> {
-        if (size < 2) return this
-        return mapIndexed { index, cue ->
-            if (index == lastIndex) cue else {
-                cue.copy(endUs = minOf(cue.endUs, this[index + 1].startUs).coerceAtLeast(cue.startUs + 1L))
-            }
-        }
     }
 
     private data class FrameFeatures(
@@ -287,5 +273,4 @@ internal object AcousticPhonemeAligner {
     private const val FRAME_US = HOP_SIZE * 1_000_000L / SAMPLE_RATE
     private const val SEARCH_RADIUS_FRAMES = 5
     private const val MIN_WORD_CONFIDENCE = 0.34f
-    private const val MIN_CUE_US = 8_000L
 }
