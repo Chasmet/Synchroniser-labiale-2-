@@ -15,7 +15,7 @@ class VideoLipSyncProcessor {
         inputVideo: File,
         outputVideoOnly: File,
         timeline: VisemeTimeline,
-        mouthRegion: MouthRegion,
+        mouthTrack: MouthTrack,
         outputAspectRatio: OutputAspectRatio,
         onProgress: (Float, Int, Int) -> Unit
     ) {
@@ -202,8 +202,9 @@ class VideoLipSyncProcessor {
                                 }
                                 val normalizedTimeUs = (
                                     decoderInfo.presentationTimeUs - firstPresentationUs
-                                ).coerceAtLeast(0L)
+                                    ).coerceAtLeast(0L)
                                 val viseme = timeline.frameAt(normalizedTimeUs)
+                                val mouthRegion = mouthTrack.regionAt(normalizedTimeUs)
                                 decoderSurface.drawImage(mouthRegion, viseme)
                                 encoderSurface.setPresentationTime(normalizedTimeUs * 1_000L)
                                 encoderSurface.swapBuffers()
