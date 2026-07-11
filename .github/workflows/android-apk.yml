@@ -14,13 +14,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      - name: Restaurer le modèle génératif en cache
+      - name: Restaurer Wav2Lip en cache
         id: cache-wav2lip
         uses: actions/cache@v4
         with:
@@ -34,6 +34,7 @@ jobs:
           model="app/src/main/assets/wav2lip_256.onnx"
           url="https://github.com/instant-high/wav2lip-onnx-256/releases/download/v1.0.0/wav2lip_256.onnx"
           expected="bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
+          mkdir -p "$(dirname "$model")"
           if [ ! -f "$model" ]; then
             curl --fail --location --retry 4 --retry-all-errors \
               --output "$model.part" "$url"
@@ -42,7 +43,30 @@ jobs:
           echo "$expected  $model" | sha256sum --check --strict
           test "$(stat --format=%s "$model")" -eq 214402122
 
-      - name: Vérifier les modèles personnels
+      - name: Restaurer Vosk français en cache
+        id: cache-vosk-fr
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/vosk-model-small-fr-0.22.zip
+          key: vosk-small-fr-022-cabf6180-v1
+
+      - name: Télécharger et authentifier Vosk français
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="app/src/main/assets/vosk-model-small-fr-0.22.zip"
+          url="https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip"
+          expected="cabf6180e177eb9b3a9a9d43a437bd5e549f3a7d09525e5d69a3fed787be12ad"
+          mkdir -p "$(dirname "$model")"
+          if [ ! -f "$model" ]; then
+            curl --fail --location --retry 4 --retry-all-errors \
+              --output "$model.part" "$url"
+            mv "$model.part" "$model"
+          fi
+          echo "$expected  $model" | sha256sum --check --strict
+          unzip -t "$model" >/dev/null
+
+      - name: Vérifier tous les modèles et la feuille de route
         run: |
           python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
           python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v4.json >/dev/null
@@ -50,6 +74,7 @@ jobs:
           import base64
           import hashlib
           import json
+          import zipfile
           from pathlib import Path
 
           model = json.loads(Path("app/src/main/assets/chk_personal_lip_model_v1.json").read_text())
@@ -74,7 +99,6 @@ jobs:
           assert training["videos_examined"] >= 28
           assert training["samples_total"] >= 6950
           assert training["diagnostic_outputs_analyzed"] >= 2
-          assert 0 <= inference["look_ahead_frames"] <= 20
           assert inference["look_ahead_frames"] == 14
           assert 0 < inference["attack_factor"] < 1
           assert 0 < inference["release_factor"] < 1
@@ -84,11 +108,29 @@ jobs:
 
           wav2lip = Path("app/src/main/assets/wav2lip_256.onnx")
           assert wav2lip.stat().st_size == 214_402_122
-          digest = hashlib.sha256(wav2lip.read_bytes()).hexdigest()
-          assert digest == "bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
+          assert hashlib.sha256(wav2lip.read_bytes()).hexdigest() == (
+              "bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
+          )
+
+          vosk = Path("app/src/main/assets/vosk-model-small-fr-0.22.zip")
+          assert hashlib.sha256(vosk.read_bytes()).hexdigest() == (
+              "cabf6180e177eb9b3a9a9d43a437bd5e549f3a7d09525e5d69a3fed787be12ad"
+          )
+          with zipfile.ZipFile(vosk) as archive:
+              assert archive.testzip() is None
+              names = archive.namelist()
+              assert any("/am/" in name or name.endswith("/am") for name in names)
+              assert any("/conf/" in name or name.endswith("/conf") for name in names)
+              assert len(names) >= 10
+
+          roadmap = Path("ROADMAP_AI_V8.md").read_text()
+          assert "Contre-arguments" in roadmap
+          assert "Vosk" in roadmap
+          assert "Wav2Lip" in roadmap
+
           print(
-              f"Modèles validés : Wav2Lip 256 + {model['name']} + {profile['name']} - "
-              f"correction secours {calibration['applied_fallback_look_ahead_ms']} ms"
+              f"Moteurs validés : Wav2Lip 256 + Vosk français + "
+              f"{model['name']} + {profile['name']}"
           )
           PY
 
@@ -116,7 +158,7 @@ jobs:
           set +e
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:lintDebug 2>&1 | tee gradle-output.log
           status=${PIPESTATUS[0]}
-          tail -n 250 gradle-output.log > gradle-tail.log
+          tail -n 300 gradle-output.log > gradle-tail.log
           exit $status
 
       - name: Publier le diagnostic dans la pull request
@@ -134,25 +176,26 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.7.1.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.8.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.7.1
-          path: LipSync-AI-Studio-v0.7.1.apk
+          name: LipSync-AI-Studio-v0.8.0
+          path: LipSync-AI-Studio-v0.8.0.apk
           if-no-files-found: error
+          compression-level: 0
 
       - name: Publier la version téléchargeable
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.7.1 >/dev/null 2>&1; then
-            gh release upload v0.7.1 LipSync-AI-Studio-v0.7.1.apk --clobber
+          if gh release view v0.8.0 >/dev/null 2>&1; then
+            gh release upload v0.8.0 LipSync-AI-Studio-v0.8.0.apk --clobber
           else
-            gh release create v0.7.1 LipSync-AI-Studio-v0.7.1.apk \
+            gh release create v0.8.0 LipSync-AI-Studio-v0.8.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.7.1 Synchronisation corrigée" \
-              --notes "Moteur génératif local Wav2Lip 256 conservé en priorité. Le moteur Pro v4 de secours est recalibré à partir du résultat fourni : retard visuel mesuré à environ 567 ms, compensation de 560 ms, attaque plus rapide, fermeture renforcée et réduction des lèvres trop arrondies. Ratios stricts 720x1280 et 1280x720."
+              --title "LipSync AI Studio v0.8.0 Guidage vocal français" \
+              --notes "Wav2Lip 256 reste le moteur principal. Ajout de Vosk français hors ligne avec mots horodatés, détection locale de parole et de silence, conversion des mots en formes de lèvres françaises, corrections M/P/B, F/V, A/E/I et O/U uniquement lorsque la confiance est suffisante, rapport qualité et repli automatique. Ratios stricts 9:16 et 16:9."
           fi
