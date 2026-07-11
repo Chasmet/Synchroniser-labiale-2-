@@ -1,0 +1,17 @@
+{
+  "name": "blend-mask-v11-half-extents-aspect-roll",
+  "resolution": [720, 1280],
+  "representative_geometry": {
+    "mouth_center": [0.5, 0.36],
+    "mouth_full_size": [0.11, 0.035],
+    "face_full_size": [0.35, 0.46],
+    "source_aspect": 0.5625
+  },
+  "affected_pixel_threshold": 0.01,
+  "v10_affected_pixels": 108374,
+  "v10_affected_percent": 11.759332,
+  "v11_affected_pixels": 15096,
+  "v11_affected_percent": 1.638021,
+  "affected_area_reduction_percent": 86.07046,
+  "notes": "v11 converts detected full dimensions to half-extents and evaluates the ellipse in aspect- and roll-correct metric coordinates."
+}

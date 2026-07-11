@@ -1,0 +1,66 @@
+{
+  "old_model": "CHK-Personal-LipMotion-v3",
+  "new_model": "CHK-Personal-LipMotion-v4-DentalGuarded",
+  "evaluation_scope": "post-training fit check on newly supplied clips; not holdout validation",
+  "source_files_embedded": false,
+  "videos": [
+    {
+      "file": "1000121054.mp4",
+      "samples": 342,
+      "old_visual_mae": [
+        0.459432,
+        0.257291,
+        0.32863
+      ],
+      "new_visual_mae": [
+        0.381484,
+        0.235553,
+        0.255792
+      ],
+      "mae_improvement_percent": [
+        16.966,
+        8.449,
+        22.164
+      ]
+    },
+    {
+      "file": "1000121055.mp4",
+      "samples": 223,
+      "old_visual_mae": [
+        0.370744,
+        0.172726,
+        0.356897
+      ],
+      "new_visual_mae": [
+        0.323222,
+        0.160864,
+        0.292733
+      ],
+      "mae_improvement_percent": [
+        12.818,
+        6.868,
+        17.978
+      ]
+    },
+    {
+      "file": "1000121060.mp4",
+      "samples": 173,
+      "old_visual_mae": [
+        0.210687,
+        0.194646,
+        0.17069
+      ],
+      "new_visual_mae": [
+        0.187108,
+        0.155273,
+        0.154296
+      ],
+      "mae_improvement_percent": [
+        11.191,
+        20.228,
+        9.605
+      ]
+    }
+  ],
+  "all_outputs_improved": true
+}

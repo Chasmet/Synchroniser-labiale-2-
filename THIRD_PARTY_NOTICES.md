@@ -19,6 +19,15 @@
 - Paquet Android utilisé : `com.microsoft.onnxruntime:onnxruntime-android:1.27.0`
 - Licence : MIT.
 
+## MediaPipe Face Landmarker
+
+- Documentation : https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/android
+- Paquet Android : `com.google.mediapipe:tasks-vision:0.10.29`
+- Modèle : `face_landmarker.task`, maillage facial de 478 points
+- Taille : `3758596` octets
+- SHA-256 : `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`
+- Licence : Apache License 2.0.
+
 ## Vosk API Android
 
 - Projet : https://github.com/alphacep/vosk-api

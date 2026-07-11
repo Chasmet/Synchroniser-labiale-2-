@@ -18,7 +18,9 @@ import kotlin.math.max
 
 data class GeneratedFace(
     val rgba: ByteBuffer,
-    val audioActivity: Float
+    val audioActivity: Float,
+    val canonicalMouth: CanonicalMouthRegion = CanonicalMouthRegion.DEFAULT,
+    val quality: GeneratedQualityMetrics = GeneratedQualityMetrics()
 )
 
 /**
@@ -53,6 +55,9 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
         .order(ByteOrder.nativeOrder())
     private var previousPrediction: FloatArray? = null
     private var previousMel: FloatArray? = null
+    private val qualityGuard = GeneratedMouthQualityGuard(
+        DentalAppearanceProfile.load(context.applicationContext)
+    )
 
     init {
         check(assetDescriptor.length == MODEL_SIZE_BYTES) {
@@ -99,7 +104,8 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
     fun infer(
         sourceRgbaBottomUp: ByteBuffer,
         melChunk: FloatArray,
-        temporalStability: Float
+        temporalStability: Float,
+        canonicalMouth: CanonicalMouthRegion = CanonicalMouthRegion.DEFAULT
     ): GeneratedFace {
         require(sourceRgbaBottomUp.remaining() >= IMAGE_SIZE * IMAGE_SIZE * RGBA_CHANNELS)
         require(melChunk.size == MEL_FLOATS)
@@ -129,12 +135,20 @@ class Wav2LipEngine(context: Context) : AutoCloseable {
         )
         colorMatchLowerFace(sourceRgbaBottomUp, prediction)
         predictionToRgbaBottomUp(prediction, rgbaOutput)
-        return GeneratedFace(rgbaOutput.duplicate().apply { position(0) }, audioActivity)
+        return qualityGuard.apply(
+            sourceRgba = sourceRgbaBottomUp,
+            generated = GeneratedFace(
+                rgba = rgbaOutput.duplicate().apply { position(0) },
+                audioActivity = audioActivity,
+                canonicalMouth = canonicalMouth
+            )
+        )
     }
 
     fun resetTemporalState() {
         previousPrediction = null
         previousMel = null
+        qualityGuard.reset()
     }
 
     internal fun packVideoInput(sourceRgbaBottomUp: ByteBuffer, target: FloatBuffer) {

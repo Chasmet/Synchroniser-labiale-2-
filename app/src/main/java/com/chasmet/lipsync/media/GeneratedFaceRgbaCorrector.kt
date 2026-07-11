@@ -14,11 +14,11 @@ internal class GeneratedFaceRgbaCorrector {
 
     fun apply(generated: GeneratedFace, viseme: VisemeFrame): GeneratedFace {
         val horizontalScale = (
-            1f + viseme.width * 0.090f - viseme.roundness * 0.085f
-            ).coerceIn(0.90f, 1.11f)
+            1f + viseme.width * 0.046f - viseme.roundness * 0.041f
+            ).coerceIn(0.95f, 1.055f)
         val verticalScale = (
-            1f + viseme.openness * 0.150f - viseme.closure * 0.200f
-            ).coerceIn(0.77f, 1.17f)
+            1f + viseme.openness * 0.078f - viseme.closure * 0.105f
+            ).coerceIn(0.88f, 1.09f)
         if (kotlin.math.abs(horizontalScale - 1f) < 0.002f &&
             kotlin.math.abs(verticalScale - 1f) < 0.002f
         ) return generated
@@ -27,10 +27,11 @@ internal class GeneratedFaceRgbaCorrector {
         output.clear()
         output.put(source.duplicate().apply { position(0) })
 
-        val centerX = size * 0.50f
-        val centerY = size * 0.31f
-        val radiusX = size * 0.29f
-        val radiusY = size * 0.17f
+        val canonical = generated.canonicalMouth
+        val centerX = size * canonical.centerX
+        val centerY = size * canonical.centerY
+        val radiusX = (size * canonical.radiusX * 1.32f).coerceIn(size * 0.10f, size * 0.34f)
+        val radiusY = (size * canonical.radiusY * 1.42f).coerceIn(size * 0.06f, size * 0.23f)
         val minX = (centerX - radiusX).toInt().coerceAtLeast(1)
         val maxX = (centerX + radiusX).toInt().coerceAtMost(size - 2)
         val minY = (centerY - radiusY).toInt().coerceAtLeast(1)
@@ -61,7 +62,9 @@ internal class GeneratedFaceRgbaCorrector {
         output.position(0)
         return GeneratedFace(
             rgba = output.duplicate().apply { position(0) },
-            audioActivity = generated.audioActivity
+            audioActivity = generated.audioActivity,
+            canonicalMouth = generated.canonicalMouth,
+            quality = generated.quality
         )
     }
 
@@ -89,6 +92,6 @@ internal class GeneratedFaceRgbaCorrector {
     private companion object {
         const val CHANNELS = 4
         const val RGB_CHANNELS = 3
-        const val MAX_BLEND = 0.82f
+        const val MAX_BLEND = 0.58f
     }
 }

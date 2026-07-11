@@ -16,3 +16,9 @@ __pycache__/
 # Téléchargé et vérifié pendant la construction GitHub Actions. Le fichier de
 # 205 Mio dépasse la limite GitHub mais il est bien embarqué dans l'APK final.
 app/src/main/assets/wav2lip_256.onnx
+
+# Traqueur MediaPipe récupéré et authentifié pendant la CI.
+app/src/main/assets/face_landmarker.task
+
+# Modèle vocal français compact récupéré pendant la CI.
+app/src/main/assets/vosk-model-small-fr-0.22.zip

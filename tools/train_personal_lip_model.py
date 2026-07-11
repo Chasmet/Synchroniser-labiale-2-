@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import google.protobuf  # noqa: F401 - requis avant les bindings MediaPipe
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -360,6 +361,27 @@ def network_predictions(features: np.ndarray, payload: dict) -> np.ndarray:
     return np.clip(activations[:, :3], 0.0, 1.0)
 
 
+def network_predictions_from_inputs(inputs: np.ndarray, payload: dict) -> np.ndarray:
+    mean = np.asarray(payload["input_mean"], dtype=np.float32)
+    scale = np.asarray(payload["input_scale"], dtype=np.float32).clip(1e-6)
+    activations = (inputs - mean) / scale
+    for layer in payload["layers"]:
+        weights = decode_weights(layer)
+        activations = activations @ weights + np.asarray(layer["bias"], dtype=np.float32)
+        if layer["activation"] == "tanh":
+            activations = np.tanh(activations)
+    return np.clip(activations[:, :3], 0.0, 1.0)
+
+
+def decode_weights(layer: dict) -> np.ndarray:
+    if "weights_q8_base64" in layer:
+        raw = base64.b64decode(layer["weights_q8_base64"])
+        weights = np.frombuffer(raw, dtype=np.int8).astype(np.float64)
+        weights = weights.reshape(int(layer["rows"]), int(layer["cols"]))
+        return weights * float(layer["weight_scale"])
+    return np.asarray(layer["weights"], dtype=np.float64)
+
+
 def extract_video(
     path: Path,
     max_side: int,
@@ -435,20 +457,59 @@ def extract_video(
     return all_inputs[valid_indices], targets.astype(np.float32), visual_targets, report
 
 
-def new_model(seed: int) -> MLPRegressor:
+def new_model(
+    seed: int,
+    *,
+    learning_rate: float = 0.001,
+    max_iter: int = 850,
+    early_stopping: bool = True,
+) -> MLPRegressor:
     return MLPRegressor(
         hidden_layer_sizes=HIDDEN_LAYERS,
         activation="tanh",
         solver="adam",
         alpha=0.0008,
         batch_size=256,
-        learning_rate_init=0.001,
-        max_iter=850,
-        early_stopping=True,
+        learning_rate_init=learning_rate,
+        max_iter=max_iter,
+        early_stopping=early_stopping,
         validation_fraction=0.12,
         n_iter_no_change=35,
         random_state=seed,
     )
+
+
+def warm_started_model(
+    base: dict,
+    new_mean: np.ndarray,
+    new_scale: np.ndarray,
+    x_scaled: np.ndarray,
+    targets: np.ndarray,
+    seed: int,
+) -> MLPRegressor:
+    """Réexprime exactement le réseau v3 dans la nouvelle normalisation, puis
+    effectue un fine-tuning prudent. Le premier passage ne change donc pas la
+    fonction apprise avant l'ajout des nouvelles vidéos.
+    """
+    model = new_model(seed, learning_rate=0.00012, max_iter=220, early_stopping=False)
+    # Initialise les attributs internes de scikit-learn avec les bonnes formes.
+    model.set_params(warm_start=True, max_iter=1)
+    model.fit(x_scaled[: min(len(x_scaled), 512)], targets[: min(len(targets), 512)])
+
+    old_mean = np.asarray(base["input_mean"], dtype=np.float64)
+    old_scale = np.asarray(base["input_scale"], dtype=np.float64).clip(1e-6)
+    layers = [decode_weights(layer) for layer in base["layers"]]
+    biases = [np.asarray(layer["bias"], dtype=np.float64) for layer in base["layers"]]
+    first = layers[0]
+    scale_ratio = np.asarray(new_scale, dtype=np.float64) / old_scale
+    mean_shift = (np.asarray(new_mean, dtype=np.float64) - old_mean) / old_scale
+    layers[0] = first * scale_ratio[:, None]
+    biases[0] = biases[0] + mean_shift @ first
+    model.coefs_ = [layer.copy() for layer in layers]
+    model.intercepts_ = [bias.copy() for bias in biases]
+    model.set_params(max_iter=220, learning_rate_init=0.00012, warm_start=True)
+    model.fit(x_scaled, targets)
+    return model
 
 
 def metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
@@ -488,19 +549,29 @@ def train(args: argparse.Namespace) -> None:
     group_parts: list[np.ndarray] = []
     reports: list[dict] = []
     teacher = json.loads(args.teacher.read_text()) if args.teacher and args.teacher.exists() else None
+    base_model = (
+        json.loads(args.base_model.read_text())
+        if args.base_model and args.base_model.exists()
+        else teacher
+    )
     selection = json.loads(args.selection.read_text()) if args.selection and args.selection.exists() else {}
     for group, path in enumerate(video_paths):
         print(f"[{group + 1:02d}/{len(video_paths):02d}] Analyse de {path.name}", flush=True)
         rule = selection.get(path.name, {})
         if rule.get("include") is False:
-            probe = probe_video(path)
-            reports.append(
-                {
+            try:
+                probe = probe_video(path)
+                excluded = {
                     "file": path.name,
                     "duration_seconds": round(probe.duration, 3),
                     "source_width": probe.width,
                     "source_height": probe.height,
                     "source_rotation": probe.rotation,
+                }
+            except Exception as error:
+                excluded = {"file": path.name, "container_error": str(error)}
+            reports.append(
+                excluded | {
                     "accepted": False,
                     "samples": 0,
                     "reason": rule.get("reason", "écartée lors du contrôle visuel"),
@@ -540,27 +611,54 @@ def train(args: argparse.Namespace) -> None:
     input_scale = x[train_indices].std(axis=0).clip(1e-6)
     x_scaled = (x - input_mean) / input_scale
 
-    evaluation_model = new_model(args.seed)
-    evaluation_model.fit(x_scaled[train_indices], y[train_indices])
+    if base_model is not None:
+        evaluation_model = warm_started_model(
+            base=base_model,
+            new_mean=input_mean,
+            new_scale=input_scale,
+            x_scaled=x_scaled[train_indices],
+            targets=y[train_indices],
+            seed=args.seed,
+        )
+    else:
+        evaluation_model = new_model(args.seed)
+        evaluation_model.fit(x_scaled[train_indices], y[train_indices])
     validation_prediction = np.clip(evaluation_model.predict(x_scaled[validation_indices]), 0.0, 1.0)
     validation_metrics = metrics(y[validation_indices], validation_prediction)
     visual_validation_metrics = metrics(
         visual_y[validation_indices], validation_prediction
     )
+    if base_model is not None:
+        baseline_prediction = network_predictions_from_inputs(x[validation_indices], base_model)
+        baseline_validation_metrics = metrics(y[validation_indices], baseline_prediction)
+        baseline_visual_metrics = metrics(visual_y[validation_indices], baseline_prediction)
+    else:
+        baseline_validation_metrics = None
+        baseline_visual_metrics = None
 
     # Le modèle livré est ensuite réentraîné sur tous les exemples valides.
     final_mean = x.mean(axis=0)
     final_scale = x.std(axis=0).clip(1e-6)
-    final_model = new_model(args.seed)
-    final_model.fit((x - final_mean) / final_scale, y)
+    if base_model is not None:
+        final_model = warm_started_model(
+            base=base_model,
+            new_mean=final_mean,
+            new_scale=final_scale,
+            x_scaled=(x - final_mean) / final_scale,
+            targets=y,
+            seed=args.seed,
+        )
+    else:
+        final_model = new_model(args.seed)
+        final_model.fit((x - final_mean) / final_scale, y)
 
     used_groups = sorted(set(int(value) for value in groups))
     validation_groups = sorted(set(int(groups[index]) for index in validation_indices))
     total_duration = sum(float(item.get("duration_seconds", 0)) for item in reports)
     labeled_seconds = sum(float(item.get("labeled_seconds", 0)) for item in reports)
     model_payload = {
-        "name": "CHK-Personal-LipMotion-v3",
-        "version": 3,
+        "name": "CHK-Personal-LipMotion-v4-DentalGuarded",
+        "version": 4,
         "input_size": INPUT_SIZE,
         "training": {
             "videos_seen": len(video_paths),
@@ -578,6 +676,13 @@ def train(args: argparse.Namespace) -> None:
             "validation_visual_r2": visual_validation_metrics["r2"],
             "seed": args.seed,
             "teacher_model": teacher.get("name") if teacher else None,
+            "fine_tuned_from": base_model.get("name") if base_model else None,
+            "baseline_validation_mae": (
+                baseline_validation_metrics["mae"] if baseline_validation_metrics else None
+            ),
+            "baseline_validation_visual_mae": (
+                baseline_visual_metrics["mae"] if baseline_visual_metrics else None
+            ),
             "visual_target_weight": [0.45, 0.30, 0.30] if teacher else [1.0, 1.0, 1.0],
         },
         "feature_context_offsets": list(OFFSETS),
@@ -595,6 +700,22 @@ def train(args: argparse.Namespace) -> None:
         "source_files_embedded": False,
         "summary": model_payload["training"],
         "videos": reports,
+        "anti_regression": {
+            "baseline_target": baseline_validation_metrics,
+            "candidate_target": validation_metrics,
+            "baseline_visual": baseline_visual_metrics,
+            "candidate_visual": visual_validation_metrics,
+            "candidate_mean_target_mae_not_worse": (
+                baseline_validation_metrics is None
+                or float(np.mean(validation_metrics["mae"]))
+                <= float(np.mean(baseline_validation_metrics["mae"]))
+            ),
+            "candidate_mean_visual_mae_not_worse": (
+                baseline_visual_metrics is None
+                or float(np.mean(visual_validation_metrics["mae"]))
+                <= float(np.mean(baseline_visual_metrics["mae"]))
+            ),
+        },
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -602,7 +723,7 @@ def train(args: argparse.Namespace) -> None:
     args.output.write_text(json.dumps(model_payload, ensure_ascii=False, separators=(",", ":")) + "\n")
     args.report.write_text(json.dumps(report_payload, ensure_ascii=False, indent=2) + "\n")
     print(
-        f"Modèle v3 écrit : {len(x)} exemples, {len(used_groups)}/{len(video_paths)} vidéos, "
+        f"Modèle v4 écrit : {len(x)} exemples, {len(used_groups)}/{len(video_paths)} vidéos, "
         f"MAE validation={validation_metrics['mae']}",
         flush=True,
     )
@@ -619,15 +740,21 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--report",
         type=Path,
-        default=Path("training/model_v3_report.json"),
+        default=Path("training/model_v4_report.json"),
     )
     parser.add_argument("--seed", type=int, default=20260711)
     parser.add_argument("--max-frame-side", type=int, default=640)
     parser.add_argument(
         "--teacher",
         type=Path,
-        default=Path("training/chk_personal_lip_model_v2.json"),
+        default=Path("app/src/main/assets/chk_personal_lip_model_v1.json"),
         help="modèle stable précédent utilisé pour éviter une régression",
+    )
+    parser.add_argument(
+        "--base-model",
+        type=Path,
+        default=Path("app/src/main/assets/chk_personal_lip_model_v1.json"),
+        help="poids v3 réexprimés puis affinés avec un faible taux d'apprentissage",
     )
     parser.add_argument(
         "--selection",

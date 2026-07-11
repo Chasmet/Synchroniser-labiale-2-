@@ -1,0 +1,506 @@
+{
+  "model": "CHK-Personal-LipMotion-v4-DentalGuarded",
+  "generated_from_personal_videos": true,
+  "source_files_embedded": false,
+  "summary": {
+    "videos_seen": 32,
+    "videos_used": 21,
+    "videos_rejected": 11,
+    "samples": 6655,
+    "source_duration_seconds": 586.165,
+    "labeled_duration_seconds": 266.2,
+    "source_files_embedded": false,
+    "hidden_layers": [
+      96,
+      48
+    ],
+    "validation_videos": 5,
+    "validation_mae": [
+      0.122085,
+      0.052059,
+      0.058439
+    ],
+    "validation_r2": [
+      0.474017,
+      0.667082,
+      0.768276
+    ],
+    "validation_visual_mae": [
+      0.279141,
+      0.184934,
+      0.246716
+    ],
+    "validation_visual_r2": [
+      0.076959,
+      0.07702,
+      -0.075259
+    ],
+    "seed": 20260711,
+    "teacher_model": "CHK-Personal-LipMotion-v3",
+    "fine_tuned_from": "CHK-Personal-LipMotion-v3",
+    "baseline_validation_mae": [
+      0.134036,
+      0.059905,
+      0.089238
+    ],
+    "baseline_validation_visual_mae": [
+      0.297858,
+      0.199683,
+      0.29746
+    ],
+    "visual_target_weight": [
+      0.45,
+      0.3,
+      0.3
+    ]
+  },
+  "videos": [
+    {
+      "file": "1000084127.mp4",
+      "sha256_12": "d6dc996ff0c7",
+      "duration_seconds": 22.198,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 555,
+      "faces_detected": 536,
+      "accepted": true,
+      "samples": 536,
+      "labeled_seconds": 21.44,
+      "mouth_movement": 0.348614
+    },
+    {
+      "file": "1000084130.mp4",
+      "accepted": false,
+      "samples": 0,
+      "reason": "Command '['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', '/workspace/scratch/5e61029ae990/upload/1000084130.mp4']' returned non-zero exit status 1."
+    },
+    {
+      "file": "1000092319.mp4",
+      "sha256_12": "e3eb99c24bdc",
+      "duration_seconds": 21.82,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 544,
+      "faces_detected": 499,
+      "accepted": true,
+      "samples": 499,
+      "labeled_seconds": 19.96,
+      "mouth_movement": 0.398306
+    },
+    {
+      "file": "1000092329.mp4",
+      "sha256_12": "91fe5a96566d",
+      "duration_seconds": 21.721,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 542,
+      "faces_detected": 531,
+      "accepted": true,
+      "samples": 531,
+      "labeled_seconds": 21.24,
+      "mouth_movement": 0.343923
+    },
+    {
+      "file": "1000099279.mp4",
+      "sha256_12": "5db45c507dce",
+      "duration_seconds": 14.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 368,
+      "faces_detected": 174,
+      "accepted": true,
+      "samples": 174,
+      "labeled_seconds": 6.96,
+      "mouth_movement": 0.328178
+    },
+    {
+      "file": "1000101855.mp4",
+      "sha256_12": "66e6af1bdcfe",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 243,
+      "faces_detected": 81,
+      "accepted": true,
+      "samples": 81,
+      "labeled_seconds": 3.24,
+      "mouth_movement": 0.190219
+    },
+    {
+      "file": "1000102739.mp4",
+      "sha256_12": "b3e1c4d16316",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 243,
+      "faces_detected": 243,
+      "accepted": true,
+      "samples": 243,
+      "labeled_seconds": 9.72,
+      "mouth_movement": 0.207855
+    },
+    {
+      "file": "1000102741.mp4",
+      "sha256_12": "235a93186f1a",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 243,
+      "faces_detected": 135,
+      "accepted": true,
+      "samples": 135,
+      "labeled_seconds": 5.4,
+      "mouth_movement": 0.292684
+    },
+    {
+      "file": "1000102940.mp4",
+      "sha256_12": "12506548f397",
+      "duration_seconds": 9.7,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 242,
+      "faces_detected": 21,
+      "accepted": false,
+      "samples": 0,
+      "reason": "pas assez de visages exploitables"
+    },
+    {
+      "file": "1000103187.mp4",
+      "sha256_12": "c5f833bab80f",
+      "duration_seconds": 9.7,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 242,
+      "faces_detected": 190,
+      "accepted": true,
+      "samples": 190,
+      "labeled_seconds": 7.6,
+      "mouth_movement": 0.27315
+    },
+    {
+      "file": "1000103456.mp4",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "visage masqué et bouche invisible"
+    },
+    {
+      "file": "1000103837.mp4",
+      "sha256_12": "4378464bb800",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 243,
+      "faces_detected": 92,
+      "accepted": true,
+      "samples": 92,
+      "labeled_seconds": 3.68,
+      "mouth_movement": 0.606058
+    },
+    {
+      "file": "1000104375.mp4",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "montgolfière : aucune bouche humaine exploitable"
+    },
+    {
+      "file": "1000105642.mp4",
+      "duration_seconds": 9.8,
+      "source_width": 704,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "motard filmé de loin : bouche invisible"
+    },
+    {
+      "file": "1000113373.mp4",
+      "accepted": false,
+      "samples": 0,
+      "reason": "Command '['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', '/workspace/scratch/5e61029ae990/upload/1000113373.mp4']' returned non-zero exit status 1."
+    },
+    {
+      "file": "1000117599.mp4",
+      "sha256_12": "a2dbef02c56e",
+      "duration_seconds": 45.0,
+      "source_width": 720,
+      "source_height": 1264,
+      "source_rotation": 0,
+      "frames_examined": 1125,
+      "faces_detected": 181,
+      "accepted": true,
+      "samples": 181,
+      "labeled_seconds": 7.24,
+      "mouth_movement": 0.486128
+    },
+    {
+      "file": "1000117677.mp4",
+      "sha256_12": "33c8c51024c8",
+      "duration_seconds": 31.8,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 795,
+      "faces_detected": 496,
+      "accepted": true,
+      "samples": 496,
+      "labeled_seconds": 19.84,
+      "mouth_movement": 0.355986
+    },
+    {
+      "file": "1000117689.mp4",
+      "sha256_12": "709783982a2c",
+      "duration_seconds": 29.5,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 738,
+      "faces_detected": 589,
+      "accepted": true,
+      "samples": 589,
+      "labeled_seconds": 23.56,
+      "mouth_movement": 0.371668
+    },
+    {
+      "file": "1000118075.mp4",
+      "sha256_12": "12d5813a4961",
+      "duration_seconds": 38.7,
+      "source_width": 694,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 968,
+      "faces_detected": 384,
+      "accepted": true,
+      "samples": 384,
+      "labeled_seconds": 15.36,
+      "mouth_movement": 0.365767
+    },
+    {
+      "file": "1000119481.mp4",
+      "sha256_12": "998ac117cdeb",
+      "duration_seconds": 16.556,
+      "source_width": 1920,
+      "source_height": 1080,
+      "source_rotation": 90,
+      "frames_examined": 413,
+      "faces_detected": 413,
+      "accepted": true,
+      "samples": 413,
+      "labeled_seconds": 16.52,
+      "mouth_movement": 0.386508
+    },
+    {
+      "file": "1000119625.mp4",
+      "duration_seconds": 33.667,
+      "source_width": 720,
+      "source_height": 938,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "visage trop petit dans une incrustation d'écran"
+    },
+    {
+      "file": "1000119969.mp4",
+      "duration_seconds": 76.282,
+      "source_width": 864,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "capture d'écran : visage trop petit pour des mesures fiables"
+    },
+    {
+      "file": "1000119971.mp4",
+      "duration_seconds": 48.128,
+      "source_width": 864,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "capture d'écran : visage trop petit pour des mesures fiables"
+    },
+    {
+      "file": "1000120669.mp4",
+      "sha256_12": "343f2b244a18",
+      "duration_seconds": 15.035,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 376,
+      "faces_detected": 345,
+      "accepted": true,
+      "samples": 345,
+      "labeled_seconds": 13.8,
+      "mouth_movement": 0.308036
+    },
+    {
+      "file": "1000120673.mp4",
+      "sha256_12": "e3c22c767a9d",
+      "duration_seconds": 15.069,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 377,
+      "faces_detected": 333,
+      "accepted": true,
+      "samples": 333,
+      "labeled_seconds": 13.32,
+      "mouth_movement": 0.305445
+    },
+    {
+      "file": "1000120676.mp4",
+      "sha256_12": "eb1c5865322b",
+      "duration_seconds": 15.068,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 377,
+      "faces_detected": 377,
+      "accepted": true,
+      "samples": 377,
+      "labeled_seconds": 15.08,
+      "mouth_movement": 0.342178
+    },
+    {
+      "file": "1000120679.mp4",
+      "sha256_12": "d43032558f64",
+      "duration_seconds": 15.075,
+      "source_width": 1080,
+      "source_height": 1920,
+      "source_rotation": 0,
+      "frames_examined": 377,
+      "faces_detected": 318,
+      "accepted": true,
+      "samples": 318,
+      "labeled_seconds": 12.72,
+      "mouth_movement": 0.330774
+    },
+    {
+      "file": "1000120979.mp4",
+      "accepted": false,
+      "samples": 0,
+      "reason": "Command '['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', '/workspace/scratch/5e61029ae990/upload/1000120979.mp4']' returned non-zero exit status 1."
+    },
+    {
+      "file": "1000120996.mp4",
+      "duration_seconds": 8.033,
+      "source_width": 720,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "sortie de diagnostic : analysée pour corriger le moteur, jamais réutilisée comme vérité d'entraînement"
+    },
+    {
+      "file": "1000121054.mp4",
+      "sha256_12": "bde7c3d8de01",
+      "duration_seconds": 13.713,
+      "source_width": 1920,
+      "source_height": 1080,
+      "source_rotation": 90,
+      "frames_examined": 342,
+      "faces_detected": 342,
+      "accepted": true,
+      "samples": 342,
+      "labeled_seconds": 13.68,
+      "mouth_movement": 0.44973
+    },
+    {
+      "file": "1000121055.mp4",
+      "sha256_12": "60416bcbbe21",
+      "duration_seconds": 9.045,
+      "source_width": 1920,
+      "source_height": 1080,
+      "source_rotation": 90,
+      "frames_examined": 223,
+      "faces_detected": 223,
+      "accepted": true,
+      "samples": 223,
+      "labeled_seconds": 8.92,
+      "mouth_movement": 0.418474
+    },
+    {
+      "file": "1000121060.mp4",
+      "sha256_12": "1a93011a7d7c",
+      "duration_seconds": 6.955,
+      "source_width": 720,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 173,
+      "faces_detected": 173,
+      "accepted": true,
+      "samples": 173,
+      "labeled_seconds": 6.92,
+      "mouth_movement": 0.109934
+    }
+  ],
+  "anti_regression": {
+    "baseline_target": {
+      "mae": [
+        0.134036,
+        0.059905,
+        0.089238
+      ],
+      "r2": [
+        0.301811,
+        0.588911,
+        0.483448
+      ]
+    },
+    "candidate_target": {
+      "mae": [
+        0.122085,
+        0.052059,
+        0.058439
+      ],
+      "r2": [
+        0.474017,
+        0.667082,
+        0.768276
+      ]
+    },
+    "baseline_visual": {
+      "mae": [
+        0.297858,
+        0.199683,
+        0.29746
+      ],
+      "r2": [
+        -0.12315,
+        -0.065242,
+        -0.529935
+      ]
+    },
+    "candidate_visual": {
+      "mae": [
+        0.279141,
+        0.184934,
+        0.246716
+      ],
+      "r2": [
+        0.076959,
+        0.07702,
+        -0.075259
+      ]
+    },
+    "candidate_mean_target_mae_not_worse": true,
+    "candidate_mean_visual_mae_not_worse": true
+  }
+}

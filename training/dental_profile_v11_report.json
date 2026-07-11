@@ -1,0 +1,51 @@
+{
+  "profile": "CHK-Personal-DentalProfile-v1",
+  "summary": {
+    "videos_examined": 3,
+    "videos_readable": 3,
+    "frames_examined": 249,
+    "mouth_frames": 207,
+    "visible_teeth_frames": 69,
+    "source_files_embedded": false
+  },
+  "videos": [
+    {
+      "file": "1000121054.mp4",
+      "sha256_12": "bde7c3d8de01",
+      "duration_seconds": 13.713,
+      "source_width": 1920,
+      "source_height": 1080,
+      "source_rotation": 90,
+      "frames_examined": 91,
+      "mouth_frames": 84,
+      "tooth_frames": 31,
+      "accepted": true
+    },
+    {
+      "file": "1000121055.mp4",
+      "sha256_12": "60416bcbbe21",
+      "duration_seconds": 9.045,
+      "source_width": 1920,
+      "source_height": 1080,
+      "source_rotation": 90,
+      "frames_examined": 89,
+      "mouth_frames": 55,
+      "tooth_frames": 38,
+      "accepted": true
+    },
+    {
+      "file": "1000121060.mp4",
+      "sha256_12": "1a93011a7d7c",
+      "duration_seconds": 6.955,
+      "source_width": 720,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "frames_examined": 69,
+      "mouth_frames": 68,
+      "tooth_frames": 0,
+      "accepted": true,
+      "profile_role": "motion_only"
+    }
+  ],
+  "privacy": "Only numeric statistics and short hashes are retained; no source frame is embedded."
+}

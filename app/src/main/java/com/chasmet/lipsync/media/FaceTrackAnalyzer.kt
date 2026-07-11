@@ -1,5 +1,6 @@
 package com.chasmet.lipsync.media
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.media.MediaExtractor
@@ -16,15 +17,18 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * Analyse le visage sur toute la durée de la vidéo et produit deux chronologies :
  * le visage complet et la bouche suivie par un traqueur labial spécialisé.
  */
-class FaceTrackAnalyzer {
+class FaceTrackAnalyzer(private val context: Context) {
 
     private data class VideoGeometry(
         val encodedWidth: Int,
@@ -38,13 +42,15 @@ class FaceTrackAnalyzer {
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .enableTracking()
             .build()
     )
 
     suspend fun analyze(videoFile: File): FaceAnalysis {
         val retriever = MediaMetadataRetriever()
         val lipTracker = DedicatedLipTracker()
+        val faceMesh = runCatching {
+            MediaPipeFaceMeshTracker(context.applicationContext)
+        }.getOrNull()
         return try {
             retriever.setDataSource(videoFile.absolutePath)
             val durationMs = retriever
@@ -68,6 +74,33 @@ class FaceTrackAnalyzer {
 
                 val scaled = scaleForDetection(bitmap)
                 try {
+                    val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
+                        geometry.rotationDegrees
+                    } else {
+                        0
+                    }
+                    val meshDetection = faceMesh?.let { tracker ->
+                        runCatching { tracker.detect(scaled, timeUs) }.getOrNull()
+                    }
+                    if (meshDetection != null) {
+                        val mouth = meshDetection.mouth
+                            .displayToEncoded(rotationToEncoded)
+                        val face = meshDetection.face
+                            .displayToEncoded(rotationToEncoded)
+                        previousDisplayRegion = meshDetection.mouth
+                        rawKeyframes += MouthKeyframe(
+                            timeUs = timeUs,
+                            region = mouth,
+                            confidence = meshDetection.confidence
+                        )
+                        rawFaceKeyframes += FaceKeyframe(
+                            timeUs = timeUs,
+                            region = face,
+                            confidence = meshDetection.confidence
+                        )
+                        continue
+                    }
+
                     val faces = detectFaces(scaled)
                     val face = selectTargetFace(
                         faces = faces,
@@ -99,11 +132,6 @@ class FaceTrackAnalyzer {
                         previousDisplayRegion = detected
                         targetTrackingId = newTrackingId ?: targetTrackingId
 
-                        val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
-                            geometry.rotationDegrees
-                        } else {
-                            0
-                        }
                         val faceConfidence = detectionConfidence(face)
                         val mouthConfidence = (
                             lipResult.confidence * 0.76f + faceConfidence * 0.24f
@@ -141,6 +169,7 @@ class FaceTrackAnalyzer {
                 faceTrack = FaceTrack(keyframes = smoothedFaces, fallback = faceFallback)
             )
         } finally {
+            runCatching { faceMesh?.close() }
             runCatching { retriever.release() }
             detector.close()
         }
@@ -477,7 +506,17 @@ class FaceTrackAnalyzer {
             centerX = (centerX / safeWidth).coerceIn(0.01f, 0.99f),
             centerY = (1f - centerY / safeHeight).coerceIn(0.01f, 0.99f),
             width = (expandedWidth / safeWidth).coerceIn(0.12f, 0.96f),
-            height = (expandedHeight / safeHeight).coerceIn(0.15f, 0.98f)
+            height = (expandedHeight / safeHeight).coerceIn(0.15f, 0.98f),
+            rollDegrees = faceRollDegrees(face)
+        )
+    }
+
+    private fun faceRollDegrees(face: Face): Float {
+        val left = face.getLandmark(FaceLandmark.MOUTH_LEFT)?.position
+        val right = face.getLandmark(FaceLandmark.MOUTH_RIGHT)?.position
+        if (left == null || right == null) return normalizeAngleDegrees(-face.headEulerAngleZ)
+        return normalizeAngleDegrees(
+            (atan2(-(right.y - left.y), right.x - left.x) * 180f / kotlin.math.PI.toFloat())
         )
     }
 
@@ -511,8 +550,17 @@ class FaceTrackAnalyzer {
             centerX = median(regions.map { it.centerX }),
             centerY = median(regions.map { it.centerY }),
             width = median(regions.map { it.width }),
-            height = median(regions.map { it.height })
+            height = median(regions.map { it.height }),
+            rollDegrees = circularMeanDegrees(regions.map { it.rollDegrees })
         )
+    }
+
+    private fun circularMeanDegrees(values: List<Float>): Float {
+        if (values.isEmpty()) return 0f
+        val radians = values.map { it * kotlin.math.PI / 180.0 }
+        val x = radians.sumOf { cos(it) }
+        val y = radians.sumOf { sin(it) }
+        return normalizeAngleDegrees((atan2(y, x) * 180.0 / kotlin.math.PI).toFloat())
     }
 
     private companion object {

@@ -1,6 +1,9 @@
 package com.chasmet.lipsync.media
 
 import android.net.Uri
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class SelectedMedia(
     val uri: Uri,
@@ -60,7 +63,8 @@ data class FaceRegion(
     val centerX: Float,
     val centerY: Float,
     val width: Float,
-    val height: Float
+    val height: Float,
+    val rollDegrees: Float = 0f
 ) {
     fun interpolate(other: FaceRegion, amount: Float): FaceRegion {
         val t = amount.coerceIn(0f, 1f)
@@ -69,7 +73,8 @@ data class FaceRegion(
             centerX = mix(centerX, other.centerX),
             centerY = mix(centerY, other.centerY),
             width = mix(width, other.width),
-            height = mix(height, other.height)
+            height = mix(height, other.height),
+            rollDegrees = interpolateAngleDegrees(rollDegrees, other.rollDegrees, t)
         )
     }
 
@@ -78,9 +83,51 @@ data class FaceRegion(
             centerX = 0.5f,
             centerY = 0.48f,
             width = 0.42f,
-            height = 0.54f
+            height = 0.54f,
+            rollDegrees = 0f
         )
     }
+}
+
+/** Zone labiale exprimée dans le carré 256 × 256 du visage redressé. */
+data class CanonicalMouthRegion(
+    val centerX: Float,
+    val centerY: Float,
+    val radiusX: Float,
+    val radiusY: Float
+) {
+    companion object {
+        val DEFAULT = CanonicalMouthRegion(0.5f, 0.31f, 0.20f, 0.09f)
+    }
+}
+
+/**
+ * Convertit la bouche réelle vers le repère du crop envoyé à Wav2Lip. Les
+ * dimensions de MouthRegion sont des diamètres complets : elles ne doivent pas
+ * être réutilisées comme rayons, faute de quoi le masque déborde sur le visage.
+ */
+internal fun MouthRegion.inCanonicalFace(
+    face: FaceRegion,
+    sourceAspect: Float
+): CanonicalMouthRegion {
+    val safeAspect = sourceAspect.coerceIn(0.25f, 4f)
+    val safeFaceWidth = face.width.coerceAtLeast(0.001f)
+    val safeFaceHeight = face.height.coerceAtLeast(0.001f)
+    val radians = -face.rollDegrees * (PI.toFloat() / 180f)
+    val c = cos(radians)
+    val s = sin(radians)
+    val metricX = (centerX - face.centerX) * safeAspect
+    val metricY = centerY - face.centerY
+    val canonicalX = c * metricX - s * metricY
+    val canonicalY = s * metricX + c * metricY
+
+    return CanonicalMouthRegion(
+        centerX = (0.5f + canonicalX / (safeFaceWidth * safeAspect))
+            .coerceIn(0.12f, 0.88f),
+        centerY = (0.5f + canonicalY / safeFaceHeight).coerceIn(0.10f, 0.82f),
+        radiusX = (width * 0.52f / safeFaceWidth).coerceIn(0.075f, 0.34f),
+        radiusY = (height * 0.48f / safeFaceHeight).coerceIn(0.035f, 0.22f)
+    )
 }
 
 data class FaceKeyframe(
@@ -221,19 +268,22 @@ internal fun FaceRegion.displayToEncoded(rotationDegrees: Int): FaceRegion {
             centerX = 1f - centerY,
             centerY = centerX,
             width = height,
-            height = width
+            height = width,
+            rollDegrees = normalizeAngleDegrees(rollDegrees + 90f)
         )
         180 -> FaceRegion(
             centerX = 1f - centerX,
             centerY = 1f - centerY,
             width = width,
-            height = height
+            height = height,
+            rollDegrees = normalizeAngleDegrees(rollDegrees + 180f)
         )
         270 -> FaceRegion(
             centerX = centerY,
             centerY = 1f - centerX,
             width = height,
-            height = width
+            height = width,
+            rollDegrees = normalizeAngleDegrees(rollDegrees - 90f)
         )
         else -> this
     }
@@ -244,6 +294,18 @@ internal fun FaceRegion.displayToEncoded(rotationDegrees: Int): FaceRegion {
         width = converted.width.coerceIn(0.12f, 0.96f),
         height = converted.height.coerceIn(0.15f, 0.98f)
     )
+}
+
+internal fun normalizeAngleDegrees(value: Float): Float {
+    var normalized = value % 360f
+    if (normalized > 180f) normalized -= 360f
+    if (normalized <= -180f) normalized += 360f
+    return normalized
+}
+
+internal fun interpolateAngleDegrees(start: Float, end: Float, amount: Float): Float {
+    val delta = normalizeAngleDegrees(end - start)
+    return normalizeAngleDegrees(start + delta * amount.coerceIn(0f, 1f))
 }
 
 data class VisemeFrame(
