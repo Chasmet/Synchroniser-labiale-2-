@@ -20,6 +20,28 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
+      - name: Vérifier le modèle neuronal personnel
+        run: |
+          python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
+          python - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          model = json.loads(Path("app/src/main/assets/chk_personal_lip_model_v1.json").read_text())
+          assert model["input_size"] == len(model["input_mean"])
+          assert model["input_size"] == len(model["input_scale"])
+          previous = model["input_size"]
+          for layer in model["layers"]:
+              assert layer["rows"] == previous
+              assert len(layer["bias"]) == layer["cols"]
+              weights = base64.b64decode(layer["weights_q8_base64"])
+              assert len(weights) == layer["rows"] * layer["cols"]
+              previous = layer["cols"]
+          assert previous == 3
+          print(f"Modèle validé : {model['name']} - {model['training']['samples']} exemples")
+          PY
+
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
