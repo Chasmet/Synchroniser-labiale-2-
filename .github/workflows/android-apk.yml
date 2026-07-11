@@ -23,7 +23,7 @@ jobs:
       - name: Vérifier les modèles personnels
         run: |
           python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
-          python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v3.json >/dev/null
+          python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v4.json >/dev/null
           python - <<'PY'
           import base64
           import json
@@ -43,12 +43,12 @@ jobs:
               previous = layer["cols"]
           assert previous == 3
 
-          profile = json.loads(Path("app/src/main/assets/chk_temporal_motion_profile_v3.json").read_text())
-          assert profile["version"] == 3
+          profile = json.loads(Path("app/src/main/assets/chk_temporal_motion_profile_v4.json").read_text())
+          assert profile["version"] == 4
           training = profile["training"]
           inference = profile["inference"]
-          assert training["videos_total"] >= 21
-          assert training["new_visual_audio_pairs"] >= 1000
+          assert training["videos_examined"] >= 28
+          assert training["samples_total"] >= 6800
           assert 0 <= inference["look_ahead_frames"] <= 5
           assert 0 < inference["attack_factor"] < 1
           assert 0 < inference["release_factor"] < 1
@@ -101,13 +101,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.5.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.6.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.5.0
-          path: LipSync-AI-Studio-v0.5.0.apk
+          name: LipSync-AI-Studio-v0.6.0
+          path: LipSync-AI-Studio-v0.6.0.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -115,11 +115,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.5.0 >/dev/null 2>&1; then
-            gh release upload v0.5.0 LipSync-AI-Studio-v0.5.0.apk --clobber
+          if gh release view v0.6.0 >/dev/null 2>&1; then
+            gh release upload v0.6.0 LipSync-AI-Studio-v0.6.0.apk --clobber
           else
-            gh release create v0.5.0 LipSync-AI-Studio-v0.5.0.apk \
+            gh release create v0.6.0 LipSync-AI-Studio-v0.6.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.5.0" \
-              --notes "Fusion du moteur temporel et du nouveau réseau personnel : suivi dynamique de la bouche, analyse de 28 vidéos, 6 869 exemples retenus et six caractéristiques audio. Correction robuste du choix 9:16 ou 16:9 sans rotation MP4 finale."
+              --title "LipSync AI Studio v0.6.0 Pro" \
+              --notes "Moteur Pro v4 créé après analyse de la sortie réelle : suppression de la cavité noire et des fausses dents, fermeture naturelle des lèvres, verrouillage du visage, suivi deux fois plus précis, analyse spectrale enrichie et influence adaptative du réseau pour éviter les ouvertures retardées."
           fi

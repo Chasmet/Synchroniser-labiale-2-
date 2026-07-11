@@ -1,0 +1,23 @@
+{
+  "name": "CHK-Temporal-Motion-v4-Pro",
+  "version": 4,
+  "training": {
+    "videos_examined": 28,
+    "videos_used": 20,
+    "source_duration_seconds": 590.171,
+    "labeled_duration_seconds": 274.76,
+    "samples_total": 6869,
+    "diagnostic_outputs_analyzed": 1,
+    "source_files_embedded": false
+  },
+  "inference": {
+    "look_ahead_frames": 1,
+    "attack_factor": 0.74,
+    "release_factor": 0.54,
+    "closure_strength": 0.84,
+    "openness_gain": 0.92,
+    "width_gain": 0.96,
+    "roundness_gain": 0.94,
+    "minimum_speech_gate": 0.035
+  }
+}

@@ -54,6 +54,8 @@ class FaceTrackAnalyzer {
             val geometry = readGeometry(videoFile, retriever)
             val sampleTimesUs = buildSampleTimes(durationUs)
             val rawKeyframes = mutableListOf<MouthKeyframe>()
+            var targetTrackingId: Int? = null
+            var previousDisplayRegion: MouthRegion? = null
 
             for (timeUs in sampleTimesUs) {
                 val bitmap = retriever.getFrameAtTime(
@@ -63,9 +65,18 @@ class FaceTrackAnalyzer {
 
                 val scaled = scaleForDetection(bitmap)
                 try {
-                    val face = detectLargestFace(scaled)
+                    val faces = detectFaces(scaled)
+                    val face = selectTargetFace(
+                        faces = faces,
+                        imageWidth = scaled.width,
+                        imageHeight = scaled.height,
+                        previousRegion = previousDisplayRegion,
+                        targetTrackingId = targetTrackingId
+                    )
                     if (face != null) {
                         val detected = mouthRegion(face, scaled.width, scaled.height)
+                        previousDisplayRegion = detected
+                        targetTrackingId = face.trackingId ?: targetTrackingId
                         val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
                             geometry.rotationDegrees
                         } else {
@@ -212,9 +223,9 @@ class FaceTrackAnalyzer {
         return abs(bitmapRatio - displayedRatio) <= abs(bitmapRatio - encodedRatio)
     }
 
-    private suspend fun detectLargestFace(bitmap: Bitmap): Face? {
+    private suspend fun detectFaces(bitmap: Bitmap): List<Face> {
         val image = InputImage.fromBitmap(bitmap, 0)
-        val faces = suspendCancellableCoroutine<List<Face>> { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             detector.process(image)
                 .addOnSuccessListener { result ->
                     if (continuation.isActive) continuation.resume(result)
@@ -223,7 +234,54 @@ class FaceTrackAnalyzer {
                     if (continuation.isActive) continuation.resumeWithException(error)
                 }
         }
-        return faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
+    }
+
+    /**
+     * Verrouille le même visage d'une image à l'autre. Le premier choix favorise
+     * un visage humain grand et proche du centre ; les choix suivants donnent la
+     * priorité à l'identifiant ML Kit puis à la continuité de la bouche.
+     */
+    private fun selectTargetFace(
+        faces: List<Face>,
+        imageWidth: Int,
+        imageHeight: Int,
+        previousRegion: MouthRegion?,
+        targetTrackingId: Int?
+    ): Face? {
+        if (faces.isEmpty()) return null
+        if (targetTrackingId != null) {
+            faces.firstOrNull { it.trackingId == targetTrackingId }?.let { return it }
+        }
+
+        val imageArea = (imageWidth.toFloat() * imageHeight.toFloat()).coerceAtLeast(1f)
+        return faces.maxByOrNull { face ->
+            val area = face.boundingBox.width() * face.boundingBox.height() / imageArea
+            val centerX = face.boundingBox.centerX().toFloat() / imageWidth.coerceAtLeast(1)
+            val centerY = face.boundingBox.centerY().toFloat() / imageHeight.coerceAtLeast(1)
+            val centerPrior = (
+                1f - (abs(centerX - 0.5f) * 1.35f + abs(centerY - 0.42f) * 0.55f)
+                ).coerceIn(0f, 1f)
+            val landmarkBonus = listOf(
+                FaceLandmark.MOUTH_LEFT,
+                FaceLandmark.MOUTH_RIGHT,
+                FaceLandmark.MOUTH_BOTTOM
+            ).count { face.getLandmark(it) != null } / 3f
+
+            if (previousRegion == null) {
+                area * 4.2f + centerPrior * 0.72f + landmarkBonus * 0.42f
+            } else {
+                val candidate = mouthRegion(face, imageWidth, imageHeight)
+                val centerDistance = abs(candidate.centerX - previousRegion.centerX) +
+                    abs(candidate.centerY - previousRegion.centerY)
+                val continuity = (1f - centerDistance / 0.42f).coerceIn(0f, 1f)
+                val widthContinuity = (
+                    min(candidate.width, previousRegion.width) /
+                        max(candidate.width, previousRegion.width).coerceAtLeast(0.001f)
+                    ).coerceIn(0f, 1f)
+                continuity * 2.4f + widthContinuity * 0.82f +
+                    area * 1.6f + centerPrior * 0.20f + landmarkBonus * 0.28f
+            }
+        }
     }
 
     private fun scaleForDetection(source: Bitmap): Bitmap {
@@ -271,8 +329,14 @@ class FaceTrackAnalyzer {
         return MouthRegion(
             centerX = (centerX / width).coerceIn(0.05f, 0.95f),
             centerY = (1f - centerY / height).coerceIn(0.05f, 0.95f),
-            width = (mouthWidthPx / width * 1.80f).coerceIn(0.08f, 0.45f),
-            height = (mouthHeightPx / height * 1.95f).coerceIn(0.04f, 0.28f)
+            width = min(
+                mouthWidthPx * 1.32f,
+                face.boundingBox.width() * 0.62f
+            ).div(width.toFloat().coerceAtLeast(1f)).coerceIn(0.045f, 0.30f),
+            height = min(
+                mouthHeightPx * 1.28f,
+                face.boundingBox.height() * 0.24f
+            ).div(height.toFloat().coerceAtLeast(1f)).coerceIn(0.022f, 0.18f)
         )
     }
 
@@ -295,8 +359,8 @@ class FaceTrackAnalyzer {
 
     private companion object {
         const val DETECTION_MAX_DIMENSION = 1_080
-        const val MIN_TRACK_INTERVAL_US = 400_000L
-        const val MAX_TRACK_SAMPLES = 220
+        const val MIN_TRACK_INTERVAL_US = 200_000L
+        const val MAX_TRACK_SAMPLES = 360
         const val MAX_CENTER_JUMP = 0.24f
         const val MAX_SIZE_RATIO = 2.25f
     }

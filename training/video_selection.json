@@ -26,5 +26,9 @@
   "1000119971.mp4": {
     "include": false,
     "reason": "capture d'écran : visage trop petit pour des mesures fiables"
+  },
+  "1000120996.mp4": {
+    "include": false,
+    "reason": "sortie de diagnostic : analysée pour corriger le moteur, jamais réutilisée comme vérité d'entraînement"
   }
 }

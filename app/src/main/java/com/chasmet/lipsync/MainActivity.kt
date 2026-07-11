@@ -227,7 +227,7 @@ private fun LipSyncApp(
 
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    "Traitement local • Modèle personnel v3 • Aucun fichier envoyé sur Internet",
+                    "Traitement local • Moteur Pro v4 • Aucun fichier envoyé sur Internet",
                     color = AppColors.TextMuted,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center

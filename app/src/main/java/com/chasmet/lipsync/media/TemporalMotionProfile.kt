@@ -16,18 +16,18 @@ internal data class TemporalMotionProfile(
     val minimumSpeechGate: Float
 ) {
     companion object {
-        private const val ASSET_NAME = "chk_temporal_motion_profile_v3.json"
+        private const val ASSET_NAME = "chk_temporal_motion_profile_v4.json"
 
         val DEFAULT = TemporalMotionProfile(
-            name = "Profil temporel standard",
-            lookAheadFrames = 2,
-            attackFactor = 0.62f,
-            releaseFactor = 0.34f,
-            closureStrength = 0.72f,
-            opennessGain = 1.16f,
-            widthGain = 1.06f,
-            roundnessGain = 1.04f,
-            minimumSpeechGate = 0.03f
+            name = "Profil Pro v4",
+            lookAheadFrames = 1,
+            attackFactor = 0.74f,
+            releaseFactor = 0.54f,
+            closureStrength = 0.84f,
+            opennessGain = 0.92f,
+            widthGain = 0.96f,
+            roundnessGain = 0.94f,
+            minimumSpeechGate = 0.035f
         )
 
         fun load(context: Context): TemporalMotionProfile {

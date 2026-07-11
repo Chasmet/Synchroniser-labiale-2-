@@ -15,7 +15,10 @@ internal data class AudioFeatureFrame(
     val lowBand: Float = 0f,
     val midBand: Float = 0f,
     val highBand: Float = 0f,
-    val spectralTilt: Float = 0f
+    val spectralTilt: Float = 0f,
+    val spectralFlux: Float = 0f,
+    val spectralCentroid: Float = 0f,
+    val voicing: Float = 0f
 )
 
 /**

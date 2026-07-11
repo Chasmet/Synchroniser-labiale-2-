@@ -586,7 +586,7 @@ def train(args: argparse.Namespace) -> None:
         "input_scale": [round(float(value), 7) for value in final_scale],
         "layers": quantized_layers(final_model),
         "output_labels": list(OUTPUT_LABELS),
-        "blend_with_signal_model": 0.42,
+        "blend_with_signal_model": 0.68,
         "quantization": "symmetric_int8_weights",
     }
     report_payload = {

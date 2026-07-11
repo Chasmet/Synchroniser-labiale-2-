@@ -41,6 +41,7 @@ internal class TextureRender(
     private var uOpenHandle = 0
     private var uWidthHandle = 0
     private var uRoundHandle = 0
+    private var uClosureHandle = 0
     private val mvpMatrix = FloatArray(16)
 
     init {
@@ -68,6 +69,7 @@ internal class TextureRender(
         uOpenHandle = GLES20.glGetUniformLocation(program, "uOpen")
         uWidthHandle = GLES20.glGetUniformLocation(program, "uWidth")
         uRoundHandle = GLES20.glGetUniformLocation(program, "uRound")
+        uClosureHandle = GLES20.glGetUniformLocation(program, "uClosure")
 
         val textures = IntArray(1)
         GLES20.glGenTextures(1, textures, 0)
@@ -150,6 +152,7 @@ internal class TextureRender(
         GLES20.glUniform1f(uOpenHandle, viseme.openness.coerceIn(0f, 1f))
         GLES20.glUniform1f(uWidthHandle, viseme.width.coerceIn(0f, 1f))
         GLES20.glUniform1f(uRoundHandle, viseme.roundness.coerceIn(0f, 1f))
+        GLES20.glUniform1f(uClosureHandle, viseme.closure.coerceIn(0f, 1f))
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         checkGlError("glDrawArrays")
@@ -173,8 +176,8 @@ internal class TextureRender(
         return MouthRegion(
             centerX = center[0].coerceIn(0.01f, 0.99f),
             centerY = center[1].coerceIn(0.01f, 0.99f),
-            width = mappedWidth.coerceIn(0.02f, 0.50f),
-            height = mappedHeight.coerceIn(0.02f, 0.36f)
+            width = mappedWidth.coerceIn(0.015f, 0.34f),
+            height = mappedHeight.coerceIn(0.012f, 0.22f)
         )
     }
 
@@ -269,21 +272,26 @@ internal class TextureRender(
             uniform float uOpen;
             uniform float uWidth;
             uniform float uRound;
+            uniform float uClosure;
 
             void main() {
                 vec2 delta = vTextureCoord - uMouthCenter;
                 vec2 safeSize = max(uMouthSize, vec2(0.001));
                 vec2 ellipse = delta / safeSize;
                 float distanceFromMouth = dot(ellipse, ellipse);
-                float influence = 1.0 - smoothstep(0.42, 1.10, distanceFromMouth);
+                float influence = 1.0 - smoothstep(0.30, 1.00, distanceFromMouth);
 
-                float speechOpen = smoothstep(0.02, 0.18, uOpen);
-                float horizontalScale = 1.0 + influence * (
-                    uWidth * 0.34 - uRound * 0.18
-                );
-                float verticalScale = 1.0 + influence * (
-                    uOpen * 1.28 + speechOpen * 0.10
-                );
+                float activity = max(uOpen, max(uWidth * 0.64, uRound * 0.54));
+                float silentClosure = 1.0 - smoothstep(0.025, 0.16, activity);
+                float closure = max(uClosure, silentClosure * 0.76);
+                float speechOpen = smoothstep(0.035, 0.82, uOpen);
+
+                float horizontalTarget = 1.0 + uWidth * 0.20 - uRound * 0.13;
+                horizontalTarget = mix(horizontalTarget, 0.94, closure * 0.36);
+                float verticalTarget = mix(0.78, 1.38, speechOpen);
+                verticalTarget = mix(verticalTarget, 0.69, closure);
+                float horizontalScale = mix(1.0, horizontalTarget, influence);
+                float verticalScale = mix(1.0, verticalTarget, influence);
                 vec2 warped = uMouthCenter + vec2(
                     delta.x / horizontalScale,
                     delta.y / verticalScale
@@ -291,30 +299,20 @@ internal class TextureRender(
 
                 vec4 color = texture2D(sTexture, warped);
 
-                vec2 innerScale = vec2(
-                    safeSize.x * (0.45 - uRound * 0.08),
-                    safeSize.y * (0.16 + uOpen * 0.58)
+                // Assombrissement léger tiré de la texture originale : aucune
+                // cavité noire ni fausses dents ne sont dessinées par-dessus le visage.
+                vec2 innerSize = vec2(
+                    safeSize.x * (0.30 - uRound * 0.035),
+                    safeSize.y * (0.10 + speechOpen * 0.24)
                 );
-                vec2 innerEllipse = delta / max(innerScale, vec2(0.001));
-                float innerMask = (
-                    1.0 - smoothstep(0.68, 1.0, dot(innerEllipse, innerEllipse))
-                ) * influence * speechOpen;
-                vec3 mouthShadow = vec3(0.075, 0.008, 0.018);
-                color.rgb = mix(color.rgb, mouthShadow, innerMask * 0.70);
-
-                float teethBand = 1.0 - smoothstep(
-                    0.045,
-                    0.16,
-                    abs(delta.y + safeSize.y * 0.08)
+                vec2 innerEllipse = delta / max(innerSize, vec2(0.001));
+                float innerMask = 1.0 - smoothstep(
+                    0.52,
+                    1.0,
+                    dot(innerEllipse, innerEllipse)
                 );
-                float teethWidth = 1.0 - smoothstep(
-                    safeSize.x * 0.24,
-                    safeSize.x * 0.48,
-                    abs(delta.x)
-                );
-                float teethMask = teethBand * teethWidth * influence
-                    * uWidth * (1.0 - uRound) * speechOpen * 0.50;
-                color.rgb = mix(color.rgb, vec3(0.94, 0.91, 0.86), teethMask);
+                float naturalShade = innerMask * speechOpen * (1.0 - closure) * 0.10;
+                color.rgb *= 1.0 - naturalShade;
 
                 gl_FragColor = color;
             }

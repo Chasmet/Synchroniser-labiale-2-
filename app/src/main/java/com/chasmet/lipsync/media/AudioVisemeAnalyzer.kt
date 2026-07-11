@@ -15,6 +15,33 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
+ * Le réseau personnel n'est utilisé fortement que lorsqu'il est cohérent avec
+ * l'analyse fréquentielle courante. Cela évite une grande ouverture retardée
+ * ou isolée lorsque le modèle rencontre une voix différente de son entraînement.
+ */
+internal fun adaptiveTrainedBlend(
+    configuredSignalBlend: Float,
+    signal: FloatArray,
+    trained: FloatArray,
+    speechGate: Float
+): Float {
+    if (signal.size < 3 || trained.size < 3) return 0f
+    val gate = speechGate.coerceIn(0f, 1f)
+    if (gate <= 0.01f) return 0f
+    val disagreement = maxOf(
+        abs(signal[0] - trained[0] * gate),
+        abs(signal[1] - trained[1] * gate) * 0.78f,
+        abs(signal[2] - trained[2] * gate) * 0.72f
+    )
+    val normalized = ((disagreement - 0.07f) / 0.48f).coerceIn(0f, 1f)
+    val smoothDisagreement = normalized * normalized * (3f - 2f * normalized)
+    val agreement = 1f - smoothDisagreement
+    val maximumModelWeight = (1f - configuredSignalBlend.coerceIn(0f, 1f))
+        .coerceAtMost(0.34f)
+    return (maximumModelWeight * gate * agreement * agreement).coerceIn(0f, 0.34f)
+}
+
+/**
  * Moteur hybride local : réseau neuronal personnel, analyse fréquentielle,
  * anticipation temporelle et détection des fermetures rapides des lèvres.
  */
@@ -163,11 +190,17 @@ class AudioVisemeAnalyzer(context: Context) {
             val fricativeFromZcr = ((raw.zeroCrossingRate - 0.055f) / 0.27f)
                 .coerceIn(0f, 1f)
             val fricative = (
-                fricativeFromZcr * 0.58f + raw.highBand * 0.62f
+                fricativeFromZcr * 0.50f + raw.highBand * 0.48f +
+                    raw.spectralCentroid * 0.20f
                 ).coerceIn(0f, 1f)
-            val voiced = (1f - fricative * 0.78f).coerceIn(0f, 1f)
+            val voiced = (
+                raw.voicing * 0.72f + (1f - fricative) * 0.38f
+                ).coerceIn(0f, 1f)
+            val plosive = (
+                raw.spectralFlux * 0.70f + transient * 0.30f
+                ) * (1f - fricative * 0.72f)
             val vowelBody = (
-                raw.lowBand * 0.34f + raw.midBand * 0.78f
+                raw.lowBand * 0.30f + raw.midBand * 0.70f + voiced * 0.18f
                 ).coerceIn(0f, 1f)
             val roundedVowel = (
                 raw.lowBand * (1f - raw.highBand) * (0.70f + raw.spectralTilt * 0.30f)
@@ -178,7 +211,8 @@ class AudioVisemeAnalyzer(context: Context) {
 
             var signalOpen = (
                 silenceGate * (
-                    0.10f + anticipatedEnergy * 0.58f + vowelBody * 0.40f + transient * 0.10f
+                    0.06f + anticipatedEnergy * 0.48f + vowelBody * 0.34f +
+                        transient * 0.06f + plosive * 0.08f
                     )
                 ).coerceIn(0f, 1f)
             var signalWidth = (
@@ -203,17 +237,26 @@ class AudioVisemeAnalyzer(context: Context) {
 
             val trained = personalModel?.predict(rawFrames, index)
             val signalBlend = personalModel?.signalBlend ?: 1f
-            val trainedBlend = 1f - signalBlend
+            val signalValues = floatArrayOf(signalOpen, signalWidth, signalRound)
+            val trainedBlend = if (trained != null) {
+                adaptiveTrainedBlend(signalBlend, signalValues, trained, silenceGate)
+            } else 0f
+            val effectiveSignalBlend = 1f - trainedBlend
 
             val openness = if (trained != null) {
-                signalOpen * signalBlend + trained[0] * silenceGate * trainedBlend
+                signalOpen * effectiveSignalBlend + trained[0] * silenceGate * trainedBlend
             } else signalOpen
             val width = if (trained != null) {
-                signalWidth * signalBlend + trained[1] * silenceGate * trainedBlend
+                signalWidth * effectiveSignalBlend + trained[1] * silenceGate * trainedBlend
             } else signalWidth
             val roundness = if (trained != null) {
-                signalRound * signalBlend + trained[2] * silenceGate * trainedBlend
+                signalRound * effectiveSignalBlend + trained[2] * silenceGate * trainedBlend
             } else signalRound
+            val silenceClosure = (1f - silenceGate) * 0.72f
+            val lipClosure = max(
+                silenceClosure,
+                closure * temporalProfile.closureStrength
+            ).coerceIn(0f, 1f)
 
             targets += VisemeFrame(
                 timeUs = raw.timeUs,
@@ -225,7 +268,8 @@ class AudioVisemeAnalyzer(context: Context) {
                 ),
                 roundness = smoothStep(
                     (roundness * temporalProfile.roundnessGain).coerceIn(0f, 1f)
-                )
+                ),
+                closure = lipClosure
             )
         }
 
@@ -244,6 +288,7 @@ class AudioVisemeAnalyzer(context: Context) {
         var openState = 0f
         var widthState = 0f
         var roundState = 0f
+        var closureState = 1f
         return targets.mapIndexed { index, target ->
             val closureBoost = closures[index] * 0.52f
             val openFactor = when {
@@ -266,17 +311,21 @@ class AudioVisemeAnalyzer(context: Context) {
             openState += (target.openness - openState) * openFactor
             widthState += (target.width - widthState) * widthFactor
             roundState += (target.roundness - roundState) * roundFactor
+            val closureFactor = if (target.closure > closureState) 0.82f else 0.48f
+            closureState += (target.closure - closureState) * closureFactor
 
             if (gates[index] < 0.025f) {
                 openState *= 0.18f
                 widthState *= 0.18f
                 roundState *= 0.18f
+                closureState += (0.82f - closureState) * 0.72f
             }
 
             target.copy(
                 openness = openState.coerceIn(0f, 1f),
                 width = widthState.coerceIn(0f, 1f),
-                roundness = roundState.coerceIn(0f, 1f)
+                roundness = roundState.coerceIn(0f, 1f),
+                closure = closureState.coerceIn(0f, 1f)
             )
         }
     }
@@ -315,6 +364,8 @@ class AudioVisemeAnalyzer(context: Context) {
         private var hasPrevious = false
         private var channelCursor = 0
         private var channelSum = 0f
+        private val previousSpectrum = FloatArray(SPECTRAL_FREQUENCIES.size)
+        private var hasPreviousSpectrum = false
 
         fun consume(buffer: ByteBuffer, pcmEncoding: Int) {
             buffer.order(ByteOrder.nativeOrder())
@@ -371,14 +422,38 @@ class AudioVisemeAnalyzer(context: Context) {
             val startSample = totalMonoSamples - sampleInWindow
             val timeUs = startSample * 1_000_000L / sampleRate.coerceAtLeast(1)
 
-            val lowPower = goertzelPower(280f, count) + goertzelPower(560f, count)
-            val midPower = goertzelPower(950f, count) + goertzelPower(1_550f, count)
-            val highPower = goertzelPower(2_700f, count) + goertzelPower(4_200f, count)
+            val powers = DoubleArray(SPECTRAL_FREQUENCIES.size) { frequencyIndex ->
+                goertzelPower(SPECTRAL_FREQUENCIES[frequencyIndex], count)
+            }
+            val lowPower = powers[0] + powers[1]
+            val midPower = powers[2] + powers[3]
+            val highPower = powers[4] + powers[5]
             val selectedPower = (lowPower + midPower + highPower).coerceAtLeast(1.0e-12)
             val low = (lowPower / selectedPower).toFloat().coerceIn(0f, 1f)
             val mid = (midPower / selectedPower).toFloat().coerceIn(0f, 1f)
             val high = (highPower / selectedPower).toFloat().coerceIn(0f, 1f)
             val tilt = ((low - high) / (low + mid + high + 0.0001f)).coerceIn(-1f, 1f)
+            val normalizedSpectrum = FloatArray(powers.size) { powerIndex ->
+                (powers[powerIndex] / selectedPower).toFloat().coerceIn(0f, 1f)
+            }
+            var flux = 0f
+            if (hasPreviousSpectrum) {
+                normalizedSpectrum.indices.forEach { powerIndex ->
+                    flux += max(
+                        0f,
+                        normalizedSpectrum[powerIndex] - previousSpectrum[powerIndex]
+                    )
+                }
+            }
+            normalizedSpectrum.copyInto(previousSpectrum)
+            hasPreviousSpectrum = true
+            val centroid = normalizedSpectrum.indices.sumOf { powerIndex ->
+                normalizedSpectrum[powerIndex].toDouble() *
+                    SPECTRAL_FREQUENCIES[powerIndex].toDouble()
+            }.toFloat() / SPECTRAL_FREQUENCIES.last()
+            val zcrNoise = ((zcr - 0.04f) / 0.28f).coerceIn(0f, 1f)
+            val voicing = ((low * 0.48f + mid * 0.52f) * (1f - zcrNoise * 0.72f))
+                .coerceIn(0f, 1f)
 
             frames += AudioFeatureFrame(
                 timeUs = timeUs,
@@ -388,7 +463,10 @@ class AudioVisemeAnalyzer(context: Context) {
                 lowBand = low,
                 midBand = mid,
                 highBand = high,
-                spectralTilt = tilt
+                spectralTilt = tilt,
+                spectralFlux = flux.coerceIn(0f, 1f),
+                spectralCentroid = centroid.coerceIn(0f, 1f),
+                voicing = voicing
             )
             sampleInWindow = 0
             sumSquares = 0.0
@@ -419,6 +497,7 @@ class AudioVisemeAnalyzer(context: Context) {
 
     private companion object {
         const val FRAME_DURATION_US = 40_000L
+        val SPECTRAL_FREQUENCIES = floatArrayOf(280f, 560f, 950f, 1_550f, 2_700f, 4_200f)
     }
 }
 

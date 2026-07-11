@@ -45,8 +45,8 @@ class TemporalInterpolationTest {
     fun visemeTimelineInterpolatesInsteadOfJumping() {
         val timeline = VisemeTimeline(
             frames = listOf(
-                VisemeFrame(0L, 0f, 0.20f, 0.80f),
-                VisemeFrame(40_000L, 1f, 0.80f, 0.20f)
+                VisemeFrame(0L, 0f, 0.20f, 0.80f, 1f),
+                VisemeFrame(40_000L, 1f, 0.80f, 0.20f, 0f)
             ),
             durationUs = 80_000L
         )
@@ -56,6 +56,7 @@ class TemporalInterpolationTest {
         assertEquals(0.50f, middle.openness, 0.0001f)
         assertEquals(0.50f, middle.width, 0.0001f)
         assertEquals(0.50f, middle.roundness, 0.0001f)
+        assertEquals(0.50f, middle.closure, 0.0001f)
     }
 
     @Test

@@ -132,7 +132,8 @@ data class VisemeFrame(
     val timeUs: Long,
     val openness: Float,
     val width: Float,
-    val roundness: Float
+    val roundness: Float,
+    val closure: Float = 0f
 ) {
     fun interpolate(other: VisemeFrame, targetTimeUs: Long): VisemeFrame {
         val span = (other.timeUs - timeUs).coerceAtLeast(1L)
@@ -142,7 +143,8 @@ data class VisemeFrame(
             timeUs = targetTimeUs,
             openness = mix(openness, other.openness),
             width = mix(width, other.width),
-            roundness = mix(roundness, other.roundness)
+            roundness = mix(roundness, other.roundness),
+            closure = mix(closure, other.closure)
         )
     }
 }
@@ -152,7 +154,7 @@ data class VisemeTimeline(
     val durationUs: Long
 ) {
     fun frameAt(timeUs: Long): VisemeFrame {
-        if (frames.isEmpty()) return VisemeFrame(timeUs, 0f, 0f, 0f)
+        if (frames.isEmpty()) return VisemeFrame(timeUs, 0f, 0f, 0f, 1f)
         if (timeUs <= frames.first().timeUs) return frames.first().copy(timeUs = timeUs)
         if (timeUs >= frames.last().timeUs) return frames.last().copy(timeUs = timeUs)
 

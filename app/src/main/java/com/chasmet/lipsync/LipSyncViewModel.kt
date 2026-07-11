@@ -110,7 +110,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_ANALYSIS,
                                 0.16f,
-                                "Analyse fréquentielle et temporelle v3"
+                                "Analyse fréquentielle adaptative Pro v4"
                             )
                         )
                     }
@@ -212,7 +212,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.DONE,
                             1f,
-                            "Vidéo ${outputAspectRatio.label} enregistrée avec le moteur temporel v3"
+                            "Vidéo ${outputAspectRatio.label} enregistrée avec le moteur Pro v4"
                         )
                     )
                 }

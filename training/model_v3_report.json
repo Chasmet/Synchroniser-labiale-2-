@@ -3,11 +3,11 @@
   "generated_from_personal_videos": true,
   "source_files_embedded": false,
   "summary": {
-    "videos_seen": 28,
+    "videos_seen": 29,
     "videos_used": 20,
-    "videos_rejected": 8,
+    "videos_rejected": 9,
     "samples": 6869,
-    "source_duration_seconds": 590.171,
+    "source_duration_seconds": 598.204,
     "labeled_duration_seconds": 274.76,
     "source_files_embedded": false,
     "hidden_layers": [
@@ -406,6 +406,16 @@
       "samples": 194,
       "labeled_seconds": 7.76,
       "mouth_movement": 0.467477
+    },
+    {
+      "file": "1000120996.mp4",
+      "duration_seconds": 8.033,
+      "source_width": 720,
+      "source_height": 1280,
+      "source_rotation": 0,
+      "accepted": false,
+      "samples": 0,
+      "reason": "sortie de diagnostic : analysée pour corriger le moteur, jamais réutilisée comme vérité d'entraînement"
     }
   ]
 }
