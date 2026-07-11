@@ -11,7 +11,11 @@ internal data class AudioFeatureFrame(
     val timeUs: Long,
     val rms: Float,
     val zeroCrossingRate: Float,
-    val transientRate: Float
+    val transientRate: Float,
+    val lowBand: Float = 0f,
+    val midBand: Float = 0f,
+    val highBand: Float = 0f,
+    val spectralTilt: Float = 0f
 )
 
 /**
@@ -53,8 +57,9 @@ internal class PersonalLipModel private constructor(
         input[cursor++] = ln((1f + current.rms * 100f).toDouble()).toFloat()
         input[cursor] = current.transientRate / (current.rms + 0.0001f)
 
-        var activations = FloatArray(input.size) { i ->
-            (input[i] - inputMean[i]) / inputScale[i].coerceAtLeast(0.000001f)
+        var activations = FloatArray(input.size) { inputIndex ->
+            (input[inputIndex] - inputMean[inputIndex]) /
+                inputScale[inputIndex].coerceAtLeast(0.000001f)
         }
 
         layers.forEach { layer ->
@@ -72,8 +77,8 @@ internal class PersonalLipModel private constructor(
             activations = output
         }
 
-        return FloatArray(3) { indexOutput ->
-            activations.getOrElse(indexOutput) { 0f }.coerceIn(0f, 1f)
+        return FloatArray(3) { outputIndex ->
+            activations.getOrElse(outputIndex) { 0f }.coerceIn(0f, 1f)
         }
     }
 

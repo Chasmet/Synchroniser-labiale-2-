@@ -20,9 +20,10 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      - name: Vérifier le modèle neuronal personnel
+      - name: Vérifier les modèles personnels
         run: |
           python -m json.tool app/src/main/assets/chk_personal_lip_model_v1.json >/dev/null
+          python -m json.tool app/src/main/assets/chk_temporal_motion_profile_v3.json >/dev/null
           python - <<'PY'
           import base64
           import json
@@ -39,7 +40,21 @@ jobs:
               assert len(weights) == layer["rows"] * layer["cols"]
               previous = layer["cols"]
           assert previous == 3
-          print(f"Modèle validé : {model['name']} - {model['training']['samples']} exemples")
+
+          profile = json.loads(Path("app/src/main/assets/chk_temporal_motion_profile_v3.json").read_text())
+          assert profile["version"] == 3
+          training = profile["training"]
+          inference = profile["inference"]
+          assert training["videos_total"] >= 21
+          assert training["new_visual_audio_pairs"] >= 1000
+          assert 0 <= inference["look_ahead_frames"] <= 5
+          assert 0 < inference["attack_factor"] < 1
+          assert 0 < inference["release_factor"] < 1
+          assert 0 <= inference["closure_strength"] <= 1
+          print(
+              f"Modèles validés : {model['name']} + {profile['name']} - "
+              f"{training['samples_total']} exemples cumulés"
+          )
           PY
 
       - name: Installer Java 17
@@ -84,13 +99,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.3.1.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.4.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.3.1
-          path: LipSync-AI-Studio-v0.3.1.apk
+          name: LipSync-AI-Studio-v0.4.0
+          path: LipSync-AI-Studio-v0.4.0.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -98,11 +113,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.3.1 >/dev/null 2>&1; then
-            gh release upload v0.3.1 LipSync-AI-Studio-v0.3.1.apk --clobber
+          if gh release view v0.4.0 >/dev/null 2>&1; then
+            gh release upload v0.4.0 LipSync-AI-Studio-v0.4.0.apk --clobber
           else
-            gh release create v0.3.1 LipSync-AI-Studio-v0.3.1.apk \
+            gh release create v0.4.0 LipSync-AI-Studio-v0.4.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.3.1" \
-              --notes "Correction définitive du format final : suppression de la rotation héritée, orientation imposée selon le choix 9:16 ou 16:9, et vérification automatique du ratio avant l'enregistrement dans la galerie."
+              --title "LipSync AI Studio v0.4.0" \
+              --notes "Moteur IA temporel v3 : suivi dynamique de la bouche sur toute la vidéo, interpolation image par image, analyse fréquentielle de la voix, anticipation de 80 ms, détection des fermetures M/P/B et profil personnalisé calibré sur 21 vidéos et 6 695 exemples cumulés. Les vidéos personnelles ne sont pas incluses dans l'APK."
           fi

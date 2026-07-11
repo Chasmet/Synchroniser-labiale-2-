@@ -15,9 +15,15 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Analyse le visage sur toute la durée de la vidéo et produit une chronologie
+ * interpolable de la bouche. Cette approche évite d'appliquer l'animation à une
+ * position fixe lorsque la tête bouge.
+ */
 class FaceTrackAnalyzer {
 
     private data class VideoGeometry(
@@ -35,57 +41,137 @@ class FaceTrackAnalyzer {
             .build()
     )
 
-    suspend fun analyze(videoFile: File): MouthRegion {
+    suspend fun analyze(videoFile: File): MouthTrack {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(videoFile.absolutePath)
             val durationMs = retriever
                 .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull()
+                ?.coerceAtLeast(0L)
                 ?: 0L
+            val durationUs = durationMs * 1_000L
             val geometry = readGeometry(videoFile, retriever)
+            val sampleTimesUs = buildSampleTimes(durationUs)
+            val rawKeyframes = mutableListOf<MouthKeyframe>()
 
-            val sampleTimesUs = buildList {
-                add(0L)
-                add(350_000L)
-                add(700_000L)
-                add(1_000_000L)
-                if (durationMs > 2_000L) add(2_000_000L)
-                if (durationMs > 5_000L) add(5_000_000L)
-            }.distinct()
-
-            val regions = mutableListOf<MouthRegion>()
             for (timeUs in sampleTimesUs) {
                 val bitmap = retriever.getFrameAtTime(
                     timeUs,
                     MediaMetadataRetriever.OPTION_CLOSEST
                 ) ?: continue
+
                 val scaled = scaleForDetection(bitmap)
-                val face = detectLargestFace(scaled)
-                if (face != null) {
-                    val detected = mouthRegion(face, scaled.width, scaled.height)
-                    val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
-                        geometry.rotationDegrees
-                    } else {
-                        0
+                try {
+                    val face = detectLargestFace(scaled)
+                    if (face != null) {
+                        val detected = mouthRegion(face, scaled.width, scaled.height)
+                        val rotationToEncoded = if (isDisplayOriented(scaled, geometry)) {
+                            geometry.rotationDegrees
+                        } else {
+                            0
+                        }
+                        rawKeyframes += MouthKeyframe(
+                            timeUs = timeUs,
+                            region = detected.displayToEncoded(rotationToEncoded),
+                            confidence = detectionConfidence(face)
+                        )
                     }
-                    regions += detected.displayToEncoded(rotationToEncoded)
+                } finally {
+                    if (scaled !== bitmap) scaled.recycle()
+                    bitmap.recycle()
                 }
-                if (scaled !== bitmap) scaled.recycle()
-                bitmap.recycle()
             }
 
-            if (regions.isEmpty()) {
+            if (rawKeyframes.isEmpty()) {
                 throw IllegalStateException(
                     "Aucun visage détecté. Utilise une vidéo frontale, nette et bien éclairée."
                 )
             }
 
-            medianRegion(regions)
+            val fallback = medianRegion(rawKeyframes.map { it.region })
+            val smoothed = smoothAndRejectOutliers(rawKeyframes, fallback)
+            MouthTrack(keyframes = smoothed, fallback = fallback)
         } finally {
             runCatching { retriever.release() }
             detector.close()
         }
+    }
+
+    private fun buildSampleTimes(durationUs: Long): List<Long> {
+        if (durationUs <= 0L) return listOf(0L)
+        val estimatedInterval = ceil(
+            durationUs.toDouble() / (MAX_TRACK_SAMPLES - 1).coerceAtLeast(1)
+        ).toLong()
+        val intervalUs = max(MIN_TRACK_INTERVAL_US, estimatedInterval)
+        val result = mutableListOf<Long>()
+        var timeUs = 0L
+        while (timeUs < durationUs && result.size < MAX_TRACK_SAMPLES) {
+            result += timeUs
+            timeUs += intervalUs
+        }
+        if (result.lastOrNull() != durationUs && result.size < MAX_TRACK_SAMPLES) {
+            result += durationUs
+        }
+        return result.distinct()
+    }
+
+    private fun smoothAndRejectOutliers(
+        keyframes: List<MouthKeyframe>,
+        fallback: MouthRegion
+    ): List<MouthKeyframe> {
+        val ordered = keyframes.sortedBy { it.timeUs }
+        if (ordered.size == 1) return ordered
+
+        val result = mutableListOf<MouthKeyframe>()
+        var previous = fallback
+        ordered.forEachIndexed { index, frame ->
+            val candidate = frame.region
+            val centerJump = abs(candidate.centerX - previous.centerX) +
+                abs(candidate.centerY - previous.centerY)
+            val widthRatio = ratio(candidate.width, previous.width)
+            val heightRatio = ratio(candidate.height, previous.height)
+            val rejected = index > 0 && (
+                centerJump > MAX_CENTER_JUMP ||
+                    widthRatio > MAX_SIZE_RATIO ||
+                    heightRatio > MAX_SIZE_RATIO
+                )
+
+            val accepted = if (rejected) previous else candidate
+            val alpha = when {
+                index == 0 -> 1f
+                frame.confidence >= 0.85f -> 0.52f
+                frame.confidence >= 0.60f -> 0.38f
+                else -> 0.24f
+            }
+            val filtered = previous.interpolate(accepted, alpha).copy(
+                centerX = previous.interpolate(accepted, alpha).centerX.coerceIn(0.02f, 0.98f),
+                centerY = previous.interpolate(accepted, alpha).centerY.coerceIn(0.02f, 0.98f),
+                width = previous.interpolate(accepted, alpha).width.coerceIn(0.035f, 0.48f),
+                height = previous.interpolate(accepted, alpha).height.coerceIn(0.025f, 0.32f)
+            )
+            result += frame.copy(region = filtered, confidence = if (rejected) 0.15f else frame.confidence)
+            previous = filtered
+        }
+        return result
+    }
+
+    private fun ratio(first: Float, second: Float): Float {
+        val minimum = min(first, second).coerceAtLeast(0.0001f)
+        return max(first, second) / minimum
+    }
+
+    private fun detectionConfidence(face: Face): Float {
+        val landmarkCount = listOf(
+            FaceLandmark.MOUTH_LEFT,
+            FaceLandmark.MOUTH_RIGHT,
+            FaceLandmark.MOUTH_BOTTOM
+        ).count { face.getLandmark(it) != null }
+        val landmarkScore = landmarkCount / 3f
+        val posePenalty = (
+            abs(face.headEulerAngleY) / 55f + abs(face.headEulerAngleZ) / 65f
+            ).coerceIn(0f, 0.65f)
+        return (0.35f + landmarkScore * 0.65f - posePenalty).coerceIn(0.10f, 1f)
     }
 
     private fun readGeometry(
@@ -142,12 +228,12 @@ class FaceTrackAnalyzer {
 
     private fun scaleForDetection(source: Bitmap): Bitmap {
         val maxDimension = max(source.width, source.height)
-        if (maxDimension <= 1_280) return source
-        val ratio = 1_280f / maxDimension.toFloat()
+        if (maxDimension <= DETECTION_MAX_DIMENSION) return source
+        val scale = DETECTION_MAX_DIMENSION.toFloat() / maxDimension.toFloat()
         return Bitmap.createScaledBitmap(
             source,
-            (source.width * ratio).toInt().coerceAtLeast(1),
-            (source.height * ratio).toInt().coerceAtLeast(1),
+            (source.width * scale).toInt().coerceAtLeast(1),
+            (source.height * scale).toInt().coerceAtLeast(1),
             true
         )
     }
@@ -205,5 +291,13 @@ class FaceTrackAnalyzer {
             width = median(regions.map { it.width }),
             height = median(regions.map { it.height })
         )
+    }
+
+    private companion object {
+        const val DETECTION_MAX_DIMENSION = 1_080
+        const val MIN_TRACK_INTERVAL_US = 400_000L
+        const val MAX_TRACK_SAMPLES = 220
+        const val MAX_CENTER_JUMP = 0.24f
+        const val MAX_SIZE_RATIO = 2.25f
     }
 }
