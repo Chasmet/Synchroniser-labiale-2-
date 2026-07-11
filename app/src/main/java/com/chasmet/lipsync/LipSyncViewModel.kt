@@ -179,7 +179,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.ASSEMBLY,
                                 0.90f,
-                                "Assemblage final en ${outputAspectRatio.label}"
+                                "Vérification finale en ${outputAspectRatio.label}"
                             )
                         )
                     }
@@ -189,7 +189,8 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         videoOnly = videoOnly,
                         audioM4a = audioM4a,
                         outputMp4 = finalFile,
-                        maxDurationUs = usableDurationUs
+                        maxDurationUs = usableDurationUs,
+                        outputAspectRatio = outputAspectRatio
                     )
 
                     _uiState.update {
@@ -211,7 +212,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.DONE,
                             1f,
-                            "Vidéo ${outputAspectRatio.label} enregistrée dans Movies/LipSync AI"
+                            "Vidéo ${outputAspectRatio.label} vérifiée et enregistrée dans Movies/LipSync AI"
                         )
                     )
                 }
