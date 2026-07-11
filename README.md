@@ -2,11 +2,14 @@
 
 Application Android de synchronisation labiale locale. Elle associe une vidéo contenant un visage à un fichier MP3, analyse le visage et le signal audio directement sur le téléphone, anime la zone de la bouche, puis exporte un MP4 dans la galerie.
 
-## Version 0.3.0
+## Version 0.3.1
 
 - écran obligatoire de choix du format juste avant la génération ;
 - choix manuel entre **9:16 vertical** et **16:9 horizontal** ;
 - export réel en 720 × 1280 ou 1280 × 720 ;
+- suppression de la rotation héritée de la vidéo intermédiaire ;
+- orientation finale imposée selon le format choisi ;
+- vérification automatique du ratio avant l'enregistrement dans la galerie ;
 - aucune déformation de l'image : la vidéo est centrée et conservée entière ;
 - modèle personnel v2 entraîné sur 18 vidéos ;
 - environ 286 secondes de données et 5 541 exemples audio–bouche ;
@@ -47,7 +50,7 @@ Application Android de synchronisation labiale locale. Elle associe une vidéo c
 
 ## Limites actuelles
 
-Le modèle 0.3.0 apprend une relation personnalisée entre le signal audio et les mouvements de bouche observés dans les vidéos d'entraînement. Il est plus grand et plus précis que le modèle précédent, mais ce n'est pas encore un modèle génératif photoréaliste lourd capable de recréer entièrement de nouvelles lèvres comme une infrastructure GPU de studio. Ajouter plusieurs gigaoctets artificiellement à l'APK n'améliorerait pas la qualité. Les profils complets, les mains devant la bouche, les mouvements rapides et plusieurs visages réduisent encore la précision.
+Le modèle 0.3.1 apprend une relation personnalisée entre le signal audio et les mouvements de bouche observés dans les vidéos d'entraînement. Il est plus grand et plus précis que le modèle précédent, mais ce n'est pas encore un modèle génératif photoréaliste lourd capable de recréer entièrement de nouvelles lèvres comme une infrastructure GPU de studio. Ajouter plusieurs gigaoctets artificiellement à l'APK n'améliorerait pas la qualité. Les profils complets, les mains devant la bouche, les mouvements rapides et plusieurs visages réduisent encore la précision.
 
 ## Construction automatique
 
