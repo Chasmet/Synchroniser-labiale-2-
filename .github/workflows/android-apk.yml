@@ -70,12 +70,17 @@ jobs:
           assert profile["version"] == 4
           training = profile["training"]
           inference = profile["inference"]
+          calibration = profile["calibration"]
           assert training["videos_examined"] >= 28
           assert training["samples_total"] >= 6950
-          assert 0 <= inference["look_ahead_frames"] <= 5
+          assert training["diagnostic_outputs_analyzed"] >= 2
+          assert 0 <= inference["look_ahead_frames"] <= 20
+          assert inference["look_ahead_frames"] == 14
           assert 0 < inference["attack_factor"] < 1
           assert 0 < inference["release_factor"] < 1
           assert 0 <= inference["closure_strength"] <= 1
+          assert calibration["estimated_visual_lag_ms"] >= 500
+          assert 520 <= calibration["applied_fallback_look_ahead_ms"] <= 600
 
           wav2lip = Path("app/src/main/assets/wav2lip_256.onnx")
           assert wav2lip.stat().st_size == 214_402_122
@@ -83,7 +88,7 @@ jobs:
           assert digest == "bfeb0ab1ef3097f456f6fdcd506d3b32ee8a42f762a6722b42d0f1ca5b64e83c"
           print(
               f"Modèles validés : Wav2Lip 256 + {model['name']} + {profile['name']} - "
-              f"{training['samples_total']} exemples cumulés"
+              f"correction secours {calibration['applied_fallback_look_ahead_ms']} ms"
           )
           PY
 
@@ -129,13 +134,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.7.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.7.1.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.7.0
-          path: LipSync-AI-Studio-v0.7.0.apk
+          name: LipSync-AI-Studio-v0.7.1
+          path: LipSync-AI-Studio-v0.7.1.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -143,11 +148,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.7.0 >/dev/null 2>&1; then
-            gh release upload v0.7.0 LipSync-AI-Studio-v0.7.0.apk --clobber
+          if gh release view v0.7.1 >/dev/null 2>&1; then
+            gh release upload v0.7.1 LipSync-AI-Studio-v0.7.1.apk --clobber
           else
-            gh release create v0.7.0 LipSync-AI-Studio-v0.7.0.apk \
+            gh release create v0.7.1 LipSync-AI-Studio-v0.7.1.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.7.0 Génératif" \
-              --notes "Nouveau moteur génératif local Wav2Lip 256 : recréation neuronale de la zone labiale image par image, spectrogramme Mel 80 bandes, accélération NNAPI/XNNPACK, fusion douce multi-masque, lissage temporel, suivi du même visage et repli automatique Pro v4. Les ratios restent strictement 720x1280 en 9:16 et 1280x720 en 16:9. Usage personnel/recherche conformément aux conditions du modèle Wav2Lip."
+              --title "LipSync AI Studio v0.7.1 Synchronisation corrigée" \
+              --notes "Moteur génératif local Wav2Lip 256 conservé en priorité. Le moteur Pro v4 de secours est recalibré à partir du résultat fourni : retard visuel mesuré à environ 567 ms, compensation de 560 ms, attaque plus rapide, fermeture renforcée et réduction des lèvres trop arrondies. Ratios stricts 720x1280 et 1280x720."
           fi
