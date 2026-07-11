@@ -23,8 +23,8 @@ android {
         applicationId = "com.chasmet.lipsync"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.7.1"
+        versionCode = 11
+        versionName = "0.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -71,9 +71,8 @@ android {
     }
 
     androidResources {
-        // Le modèle est déjà un graphe binaire compact. Le conserver sans
-        // compression permet une copie séquentielle fiable au premier rendu.
-        noCompress += "onnx"
+        // Les modèles sont déjà des fichiers binaires compressés ou mappés.
+        noCompress += listOf("onnx", "zip")
     }
 }
 
@@ -94,6 +93,8 @@ dependencies {
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("com.github.wendykierp:JTransforms:3.1")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
+    implementation("com.alphacephei:vosk-android:0.3.47@aar")
 
     testImplementation("junit:junit:4.13.2")
 }
