@@ -62,13 +62,13 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" --body-file diagnostic.md
 
       - name: Préparer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.2.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk LipSync-AI-Studio-v0.3.0.apk
 
       - name: Publier l'artefact de compilation
         uses: actions/upload-artifact@v4
         with:
-          name: LipSync-AI-Studio-v0.2.0
-          path: LipSync-AI-Studio-v0.2.0.apk
+          name: LipSync-AI-Studio-v0.3.0
+          path: LipSync-AI-Studio-v0.3.0.apk
           if-no-files-found: error
 
       - name: Publier la version téléchargeable
@@ -76,11 +76,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.2.0 >/dev/null 2>&1; then
-            gh release upload v0.2.0 LipSync-AI-Studio-v0.2.0.apk --clobber
+          if gh release view v0.3.0 >/dev/null 2>&1; then
+            gh release upload v0.3.0 LipSync-AI-Studio-v0.3.0.apk --clobber
           else
-            gh release create v0.2.0 LipSync-AI-Studio-v0.2.0.apk \
+            gh release create v0.3.0 LipSync-AI-Studio-v0.3.0.apk \
               --target "$GITHUB_SHA" \
-              --title "LipSync AI Studio v0.2.0" \
-              --notes "Ajout du premier modèle neuronal personnalisé entraîné sur les vidéos fournies, conservation physique du format vertical ou horizontal, rotation intégrée aux pixels et tests automatiques de géométrie vidéo. Les vidéos d'entraînement ne sont pas incluses dans l'APK."
+              --title "LipSync AI Studio v0.3.0" \
+              --notes "Ajout d'un écran obligatoire de choix du format 9:16 ou 16:9, export exact sans étirement, et modèle personnel v2 entraîné sur 18 vidéos, 286 secondes et 5 541 exemples audio-bouche. Les vidéos sources ne sont pas incluses dans l'APK."
           fi
