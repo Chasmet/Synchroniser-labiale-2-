@@ -98,11 +98,11 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.FACE_ANALYSIS,
                                 0.08f,
-                                "Recherche de la bouche sur plusieurs images"
+                                "Suivi de la bouche pendant toute la vidéo"
                             )
                         )
                     }
-                    val mouth = FaceTrackAnalyzer().analyze(videoFile)
+                    val mouthTrack = FaceTrackAnalyzer().analyze(videoFile)
 
                     val startUs = (current.audioStartSeconds * 1_000_000L).toLong()
                     _uiState.update {
@@ -110,7 +110,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.AUDIO_ANALYSIS,
                                 0.16f,
-                                "Analyse par le modèle personnel v2"
+                                "Analyse fréquentielle et temporelle v3"
                             )
                         )
                     }
@@ -129,7 +129,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                             status = ProcessingStatus(
                                 ProcessingStage.VIDEO_RENDER,
                                 0.20f,
-                                "${outputAspectRatio.label} • bloc 1 sur $totalBlocks",
+                                "${mouthTrack.detectionCount} repères • bloc 1 sur $totalBlocks",
                                 1,
                                 totalBlocks
                             )
@@ -139,7 +139,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         inputVideo = videoFile,
                         outputVideoOnly = videoOnly,
                         timeline = timeline,
-                        mouthRegion = mouth,
+                        mouthTrack = mouthTrack,
                         outputAspectRatio = outputAspectRatio
                     ) { localProgress, block, blocks ->
                         val globalProgress = 0.20f + localProgress * 0.58f
@@ -148,7 +148,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                                 status = ProcessingStatus(
                                     ProcessingStage.VIDEO_RENDER,
                                     globalProgress,
-                                    "${outputAspectRatio.label} • bloc $block sur $blocks",
+                                    "Suivi dynamique • bloc $block sur $blocks",
                                     block,
                                     blocks
                                 )
@@ -212,7 +212,7 @@ class LipSyncViewModel(application: Application) : AndroidViewModel(application)
                         status = ProcessingStatus(
                             ProcessingStage.DONE,
                             1f,
-                            "Vidéo ${outputAspectRatio.label} vérifiée et enregistrée dans Movies/LipSync AI"
+                            "Vidéo ${outputAspectRatio.label} enregistrée avec le moteur temporel v3"
                         )
                     )
                 }
