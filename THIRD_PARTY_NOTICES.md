@@ -18,3 +18,29 @@
 - Projet : https://github.com/microsoft/onnxruntime
 - Paquet Android utilisé : `com.microsoft.onnxruntime:onnxruntime-android:1.27.0`
 - Licence : MIT.
+
+## Vosk API Android
+
+- Projet : https://github.com/alphacep/vosk-api
+- Paquet Android utilisé : `com.alphacephei:vosk-android:0.3.47`
+- Fonction : reconnaissance vocale française locale avec mots et horodatages.
+- Licence : Apache License 2.0.
+
+## Modèle Vosk français compact
+
+- Source : https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip
+- Nom : `vosk-model-small-fr-0.22.zip`
+- SHA-256 : `cabf6180e177eb9b3a9a9d43a437bd5e549f3a7d09525e5d69a3fed787be12ad`
+- Licence déclarée par la liste officielle des modèles Vosk : Apache License 2.0.
+- Le modèle est intégré sous forme d’archive vérifiée, puis extrait dans l’espace privé de l’application au premier traitement.
+
+## Java Native Access
+
+- Projet : https://github.com/java-native-access/jna
+- Paquet Android utilisé : `net.java.dev.jna:jna:5.13.0`
+- Fonction : liaison native nécessaire au moteur Vosk sur Android.
+- Licence : LGPL 2.1 ou version ultérieure, avec option Apache License 2.0 selon les conditions publiées par le projet.
+
+## Confidentialité
+
+Les modèles fonctionnent localement. La vidéo, l’audio, la transcription et les repères de visage ne sont envoyés vers aucun service distant par l’application.
